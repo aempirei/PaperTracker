@@ -5,13 +5,15 @@ import android.content.Context;
 import android.os.Bundle;
 import android.graphics.PixelFormat;
 import android.hardware.Camera;
+import android.hardware.Camera.*;
 import android.os.Bundle;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
+import android.util.Log;
 
-public class preview extends Activity implements SurfaceHolder.Callback
+public class preview extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
 {
 	Camera camera;
 	SurfaceView surfaceView;
@@ -39,9 +41,16 @@ public class preview extends Activity implements SurfaceHolder.Callback
 
 			if(!previewing) {
 				camera = Camera.open();
+				
 				if (camera != null) {
 					try {
 						camera.setPreviewDisplay(surfaceHolder);
+						camera.setPreviewCallback(new PreviewCallback() {
+							@Override
+							public void onPreviewFrame(byte[] data, Camera camera) {
+								        Log.i("butt", "the first byte of this shit frame is" + data[0]);
+									        }
+						});
 						camera.startPreview();
 						previewing = true;
 					} catch (IOException e) {
@@ -85,4 +94,15 @@ public class preview extends Activity implements SurfaceHolder.Callback
   // TODO Auto-generated method stub
   
  }
+
+@Override
+public void onPreviewFrame(byte[] data, Camera camera) {
+	Log.i("butt", "the first byte of this shit frame is" + data[0]);
+	}
+
+
 }
+/*class Extract implements Camera.PreviewCallback {
+
+}*/
+		
