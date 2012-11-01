@@ -46,17 +46,26 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 				if (camera != null) {
 					try {
 						camera.setPreviewDisplay(surfaceHolder);
+						final Size previewSize = camera.getParameters().getPreviewSize();
 						camera.setPreviewCallback(new PreviewCallback() {
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
-								        Log.i("butt", "the first byte of this shit frame is" + data[0]);
+
+							for (int i = previewSize.width*(previewSize.height/2); i <= previewSize.width*(previewSize.height/2+1); i++) {
+								Log.i("butt", "Processing byte" + i + "of the middle row which is" + data[i]);
+							}
+									
+								
+								
+								
+								/*Log.i("butt", "the first byte of this shit frame is" + data[0]);
 									Size previewSize = camera.getParameters().getPreviewSize();
 									Log.i("butt", "preview size is " + previewSize.width + "x" + previewSize.height);
 									List<Size> supportedPreviewSizes = camera.getParameters().getSupportedPreviewSizes();
 									for (Size size : supportedPreviewSizes) {
-										Log.i("butt", "supported preview size" + size.width + "x" + size.height);
+										Log.i("butt", "supported preview size" + size.width + "x" + size.height);*/
 									}
-									        }
+									        
 						});
 						camera.startPreview();
 						previewing = true;
