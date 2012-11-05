@@ -13,7 +13,11 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.util.Log;
-
+import android.media.AudioTrack;
+import android.media.AudioTrack.*;
+import android.media.AudioFormat;
+import android.media.AudioFormat.*;
+import android.media.AudioManager;
 public class preview extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
 {
 	Camera camera;
@@ -47,13 +51,17 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					try {
 						camera.setPreviewDisplay(surfaceHolder);
 						final Size previewSize = camera.getParameters().getPreviewSize();
+						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, 46000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT, AudioTrack.getMinBufferSize(46000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT), AudioTrack.MODE_STREAM);
 						camera.setPreviewCallback(new PreviewCallback() {
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
 
-							for (int i = previewSize.width*(previewSize.height/2); i <= previewSize.width*(previewSize.height/2+1); i++) {
+								noise.write(data, previewSize.width*(previewSize.height/2), previewSize.width);
+								noise.play();
+
+							/*for (int i = previewSize.width*(previewSize.height/2); i <= previewSize.width*(previewSize.height/2+1); i++) {
 								Log.i("butt", "Processing byte" + i + "of the middle row which is" + data[i]);
-							}
+							}*/
 									
 								
 								
@@ -113,7 +121,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 @Override
 public void onPreviewFrame(byte[] data, Camera camera) {
-	Log.i("butt", "the first byte of this shit frame is" + data[0]);
 	}
 
 
