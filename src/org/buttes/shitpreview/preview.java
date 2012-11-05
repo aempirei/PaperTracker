@@ -1,6 +1,8 @@
 package org.buttes.shitpreview;
 import java.io.IOException;
 import java.util.List;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
@@ -52,19 +54,40 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						camera.setPreviewDisplay(surfaceHolder);
 						final Size previewSize = camera.getParameters().getPreviewSize();
 						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, 16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT), AudioTrack.MODE_STREAM);
+
 						camera.setPreviewCallback(new PreviewCallback() {
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
 
-								noise.write(data, previewSize.width*(previewSize.height/2), previewSize.width);
+								/*
+
+								TODO:
+									1. perform 8-bit Y-channel to 16-bit mono PCM conversion
+									2. invert, normalize & stretch pcm
+									3. centroid position and width detection
+									4. select frequency scale or proceedural instrument table
+										a. probably not a not fourier basis like DCT-II/II transform pairs,
+										b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
+									5. centroid position, width to frequency, amplitude conversion
+									6. freq to time domain composition and compress range
+
+								*/
+
+								short[] pcmBuffer = new short[previewSize.width];
+								int dataOffsetIndex = previewSize.height / 2;
+
+								for(int i = 0; i < pcmBuffer.length; i++) {
+									pcmBuffer[i] = (short)(((int)data[dataOffsetIndex + i] & 0x00ff) + 0x0080); // convert unsigned 8-bit to signed 16-bit
+									pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
+								}
+
+								noise.write(pcmBuffer, 0, pcmBuffer.length);
+								// noise.write(data, previewSize.width * (previewSize.height / 2), previewSize.width);
 								noise.play();
 
 							/*for (int i = previewSize.width*(previewSize.height/2); i <= previewSize.width*(previewSize.height/2+1); i++) {
 								Log.i("butt", "Processing byte" + i + "of the middle row which is" + data[i]);
 							}*/
-									
-								
-								
 								
 								/*Log.i("butt", "the first byte of this shit frame is" + data[0]);
 									Size previewSize = camera.getParameters().getPreviewSize();
