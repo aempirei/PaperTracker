@@ -51,7 +51,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					try {
 						camera.setPreviewDisplay(surfaceHolder);
 						final Size previewSize = camera.getParameters().getPreviewSize();
-						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, 46000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT, AudioTrack.getMinBufferSize(46000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT), AudioTrack.MODE_STREAM);
+						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, 16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT), AudioTrack.MODE_STREAM);
 						camera.setPreviewCallback(new PreviewCallback() {
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
