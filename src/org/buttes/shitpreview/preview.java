@@ -48,14 +48,37 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	surfaceHolder.addCallback(this);
 	surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 
+	// possibly updated by callbacks
+
+	final TextView message = (TextView)findViewById(R.id.message);
+
+	// configure audio ahead-of-time
+
+	final int sampleRate = 11025;
+	final int sampleSize = 2; // in bytes
+	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
+	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
+										(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
+										AudioFormat.ENCODING_INVALID;
+
+	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
+	final int secondBufferSize = sampleRate * sampleSize;
+	final int bufferSize = Math.max(minBufferSize, secondBufferSize);
+
+	final AudioTrack noise = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
+
+	// setup start camera button
+
 	buttonStartCameraPreview.setOnClickListener(new Button.OnClickListener() {
 		@Override
 		public void onClick(View v) {
 
 			if(!previewing) {
+
 				camera = Camera.open();
 				
 				if (camera != null) {
+
 					try {
 
 						camera.setPreviewDisplay(surfaceHolder);
@@ -66,24 +89,10 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						final int frameWidth = previewSize.width;
 						final int frameOffset = previewSize.height / 2;
 
-						final int sampleRate = 11025;
-						final int sampleSize = 2; // in bytes
-						final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
-						final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
-															(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
-															AudioFormat.ENCODING_INVALID;
-
-						final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-						final int secondBufferSize = sampleRate * sampleSize;
-						final int bufferSize = Math.max(minBufferSize, secondBufferSize);
-
-						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 						final long startTime = System.currentTimeMillis();
-						final int lagCompensationFactor = 4;
+						final int targetRunRate = 5;
 						final int framesPerMessage = 10;
 						final double targetFps = (double)sampleRate / frameWidth;
-
-						final TextView message = (TextView)findViewById(R.id.message);
 
 						camera.setPreviewCallback(new PreviewCallback() {
 
@@ -115,75 +124,84 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
 								}
 
-								for(int i = 0; i < lagCompensationFactor; i++)
+								for(int i = 0; i < targetRunRate; i++)
 									noise.write(pcmBuffer, 0, frameWidth);
-
-								noise.play();
 
 								counters[0]++;
 								counters[1] = System.currentTimeMillis() - startTime;
 
 								double secs = (double)counters[1] / 1000.0;
 								double fps = (double)counters[0] / secs;
+								double runRate = targetFps / fps;
 
 								if(counters[0] % framesPerMessage == 1) {
-									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f:%.1ffps (X%.1f)",
-												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, targetFps / fps));
+									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f:%.1ffps (X%.1f %s)",
+												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, runRate < targetRunRate ? "good" : "bad"));
 								}
 							}
 
 						});
+
 						camera.startPreview();
+
+						noise.play();
+
 						previewing = true;
+
 					} catch (IOException e) {
+
 						e.printStackTrace();
 					}
 				}
 			}
 		}});
 
+	// setup stop camera button
+
 	buttonStopCameraPreview.setOnClickListener(new Button.OnClickListener() {
 
 		@Override
 		public void onClick(View v) {
 
-			if(camera !=null && previewing) {
+			if(camera != null && previewing) {
+
 				camera.stopPreview();
 				camera.release();
+
+				noise.stop();
+
 				camera = null;
 
 				previewing = false;
 			}
 		}});
 
-    }
-
- @Override
- public void surfaceChanged(SurfaceHolder holder, int format, int width,
-   int height) {
-  // TODO Auto-generated method stub
-  
- }
-
- @Override
- public void surfaceCreated(SurfaceHolder holder) {
-  // TODO Auto-generated method stub
-  
- }
-
- @Override
- public void surfaceDestroyed(SurfaceHolder holder) {
-  // TODO Auto-generated method stub
-  
- }
-
-@Override
-public void onPreviewFrame(byte[] data, Camera camera) {
 	}
 
+	@Override
+		public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+			// TODO Auto-generated method stub
 
+		}
+
+	@Override
+		public void surfaceCreated(SurfaceHolder holder) {
+			// TODO Auto-generated method stub
+
+		}
+
+	@Override
+		public void surfaceDestroyed(SurfaceHolder holder) {
+			// TODO Auto-generated method stub
+
+		}
+
+	@Override
+		public void onPreviewFrame(byte[] data, Camera camera) {
+		}
 }
-/*class Extract implements Camera.PreviewCallback {
 
-}*/
-		
+/* 
+class Extract implements Camera.PreviewCallback {
+}
+*/
