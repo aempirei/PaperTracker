@@ -66,22 +66,16 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						final int frameWidth = previewSize.width;
 						final int frameOffset = previewSize.height / 2;
 
-						final int sampleRate = 16000;
+						final int sampleRate = 11025;
 						final int sampleSize = 2; // in bytes
 						final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
 						final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
 															(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
 															AudioFormat.ENCODING_INVALID;
 
-						// various types of buffer sizes
-
 						final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-						final int frameBufferSize = frameWidth * sampleSize;
-						final int qsecBufferSize = sampleRate * sampleSize / 4;
-
-						// choose a good buffer size
-
-						final int bufferSize = Math.max(Math.max(minBufferSize, frameBufferSize), qsecBufferSize);
+						final int secondBufferSize = sampleRate * sampleSize;
+						final int bufferSize = Math.max(minBufferSize, secondBufferSize);
 
 						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 						final long startTime = System.currentTimeMillis();
@@ -133,8 +127,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								double fps = (double)counters[0] / secs;
 
 								if(counters[0] % framesPerMessage == 1) {
-									message.setText(String.format("PaperTracker - frame:%d elapsed:%.1fs spf:%d buffer:%d target-fps:%.1f fps:%.1f comp:%.1f",
-												counters[0], secs, frameWidth, bufferSize, targetFps, fps, fps / targetFps));
+									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f:%.1ffps (X%.1f)",
+												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, targetFps / fps));
 								}
 							}
 
