@@ -73,23 +73,30 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 															(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
 															AudioFormat.ENCODING_INVALID;
 
-						final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-						final int frameSize = frameWidth * sampleSize;
+						// various types of buffer sizes
 
-						final int bufferSize = Math.max(minBufferSize, frameSize);
+						final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
+						final int frameBufferSize = frameWidth * sampleSize;
+						final int qsecBufferSize = sampleRate * sampleSize / 4;
+
+						// choose a good buffer size
+
+						final int bufferSize = Math.max(Math.max(minBufferSize, frameBufferSize), qsecBufferSize);
 
 						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 						final long startTime = System.currentTimeMillis();
-						final int lagCompensationFactor = 3;
+						final int lagCompensationFactor = 4;
+						final int framesPerMessage = 10;
+						final double targetFps = (double)sampleRate / frameWidth;
 
 						final TextView message = (TextView)findViewById(R.id.message);
 
 						camera.setPreviewCallback(new PreviewCallback() {
 
-							// make these mutable longs cleaner
+							// make these mutable longs cleaner at some point
 							// for now 0:frames 1:elapsed_time
 
-							final long[] counters = new long[128];
+							final long[] counters = new long[16];
 							final short[] pcmBuffer = new short[frameWidth];
 
 							@Override
@@ -122,8 +129,12 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								counters[0]++;
 								counters[1] = System.currentTimeMillis() - startTime;
 
+								double secs = (double)counters[1] / 1000.0;
+								double fps = (double)counters[0] / secs;
+
 								if(counters[0] % framesPerMessage == 1) {
-									message.setText(String.format("PaperTracker - frame:%d buffer:%d target-fps:%d", frameWidth, bufferSize, sampleRate / frameWidth));
+									message.setText(String.format("PaperTracker - frame:%d elapsed:%.1fs spf:%d buffer:%d target-fps:%.1f fps:%.1f comp:%.1f",
+												counters[0], secs, frameWidth, bufferSize, targetFps, fps, fps / targetFps));
 								}
 							}
 
