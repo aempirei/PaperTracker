@@ -84,8 +84,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 						final TextView message = (TextView)findViewById(R.id.message);
 
-						message.setText(String.format("PaperTracker - frame:%d buffer:%d target-fps:%d", frameWidth, bufferSize, sampleRate / frameWidth));
-
 						camera.setPreviewCallback(new PreviewCallback() {
 
 							// make these mutable longs cleaner
@@ -97,19 +95,18 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
 
-								/*
-
-								TODO:
-									1. perform 8-bit Y-channel to 16-bit mono PCM conversion
-									2. invert, normalize & stretch pcm
-									3. centroid position and width detection
-									4. select frequency scale or proceedural instrument table
-										a. probably not a not fourier basis like DCT-II/II transform pairs,
-										b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
-									5. centroid position, width to frequency, amplitude conversion
-									6. freq to time domain composition and compress range
-									7. lag compensation
-								*/
+							/*
+							 * TODO:
+							 * 1. perform 8-bit Y-channel to 16-bit mono PCM conversion
+							 * 2. invert, normalize & stretch pcm
+							 * 3. centroid position and width detection
+							 * 4. select frequency scale or proceedural instrument table
+							 * a. probably not a not fourier basis like DCT-II/II transform pairs,
+							 * b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
+							 * 5. centroid position, width to frequency, amplitude conversion
+							 * 6. freq to time domain composition and compress range
+							 * 7. lag compensation
+							 */
 
 								for(int i = 0; i < pcmBuffer.length; i++) {
 									pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
@@ -124,8 +121,12 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 								counters[0]++;
 								counters[1] = System.currentTimeMillis() - startTime;
-									}
-									        
+
+								if(counters[0] % framesPerMessage == 1) {
+									message.setText(String.format("PaperTracker - frame:%d buffer:%d target-fps:%d", frameWidth, bufferSize, sampleRate / frameWidth));
+								}
+							}
+
 						});
 						camera.startPreview();
 						previewing = true;
