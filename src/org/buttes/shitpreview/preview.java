@@ -1,6 +1,7 @@
 package org.buttes.shitpreview;
 import java.io.IOException;
 import java.util.List;
+import java.lang.Math;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import android.app.Activity;
@@ -10,10 +11,12 @@ import android.graphics.PixelFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.*;
 import android.os.Bundle;
+import android.view.WindowManager;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 import android.util.Log;
 import android.media.AudioTrack;
 import android.media.AudioTrack.*;
@@ -27,16 +30,19 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	SurfaceHolder surfaceHolder;
 	boolean previewing = false;
 
-    @Override
-    public void onCreate(Bundle savedInstanceState)
-    {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.main);
+	@Override
+	public void onCreate(Bundle savedInstanceState)
+	{
+
+	super.onCreate(savedInstanceState);
+	setContentView(R.layout.main);
 
 	Button buttonStartCameraPreview = (Button)findViewById(R.id.startcamerapreview);
 	Button buttonStopCameraPreview = (Button)findViewById(R.id.stopcamerapreview);
 
-	getWindow().setFormat(PixelFormat.UNKNOWN);
+	getWindow().setFormat(PixelFormat.YCbCr_420_SP);
+	getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
 	surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
 	surfaceHolder = surfaceView.getHolder();
 	surfaceHolder.addCallback(this);
@@ -51,11 +57,43 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 				
 				if (camera != null) {
 					try {
+
 						camera.setPreviewDisplay(surfaceHolder);
+						camera.setDisplayOrientation(0);
+	
 						final Size previewSize = camera.getParameters().getPreviewSize();
-						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, 16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT), AudioTrack.MODE_STREAM);
+					
+						final int frameWidth = previewSize.width;
+						final int frameOffset = previewSize.height / 2;
+
+						final int sampleRate = 16000;
+						final int sampleSize = 2; // in bytes
+						final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
+						final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
+															(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
+															AudioFormat.ENCODING_INVALID;
+
+						final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
+						final int frameSize = frameWidth * sampleSize;
+
+						final int bufferSize = Math.max(minBufferSize, frameSize);
+
+						final AudioTrack noise = new AudioTrack(AudioManager.STREAM_RING, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
+						final long startTime = System.currentTimeMillis();
+						final int lagCompensationFactor = 3;
+
+						final TextView message = (TextView)findViewById(R.id.message);
+
+						message.setText(String.format("PaperTracker - frame:%d buffer:%d target-fps:%d", frameWidth, bufferSize, sampleRate / frameWidth));
 
 						camera.setPreviewCallback(new PreviewCallback() {
+
+							// make these mutable longs cleaner
+							// for now 0:frames 1:elapsed_time
+
+							final long[] counters = new long[128];
+							final short[] pcmBuffer = new short[frameWidth];
+
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
 
@@ -70,31 +108,22 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 										b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
 									5. centroid position, width to frequency, amplitude conversion
 									6. freq to time domain composition and compress range
-
+									7. lag compensation
 								*/
 
-								short[] pcmBuffer = new short[previewSize.width];
-								int dataOffsetIndex = previewSize.height / 2;
-
 								for(int i = 0; i < pcmBuffer.length; i++) {
-									pcmBuffer[i] = (short)(((int)data[dataOffsetIndex + i] & 0x00ff) + 0x0080); // convert unsigned 8-bit to signed 16-bit
+									pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
+									pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
 									pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
 								}
 
-								noise.write(pcmBuffer, 0, pcmBuffer.length);
-								// noise.write(data, previewSize.width * (previewSize.height / 2), previewSize.width);
+								for(int i = 0; i < lagCompensationFactor; i++)
+									noise.write(pcmBuffer, 0, frameWidth);
+
 								noise.play();
 
-							/*for (int i = previewSize.width*(previewSize.height/2); i <= previewSize.width*(previewSize.height/2+1); i++) {
-								Log.i("butt", "Processing byte" + i + "of the middle row which is" + data[i]);
-							}*/
-								
-								/*Log.i("butt", "the first byte of this shit frame is" + data[0]);
-									Size previewSize = camera.getParameters().getPreviewSize();
-									Log.i("butt", "preview size is " + previewSize.width + "x" + previewSize.height);
-									List<Size> supportedPreviewSizes = camera.getParameters().getSupportedPreviewSizes();
-									for (Size size : supportedPreviewSizes) {
-										Log.i("butt", "supported preview size" + size.width + "x" + size.height);*/
+								counters[0]++;
+								counters[1] = System.currentTimeMillis() - startTime;
 									}
 									        
 						});
