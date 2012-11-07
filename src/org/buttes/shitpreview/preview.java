@@ -147,11 +147,22 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		button.setOnClickListener(new Button.OnClickListener() {
 
+			// these are all generally shared between the 3 threads
+
 			final int callbackBuffersN = 20;
+			final long startTime = System.currentTimeMillis();
+
 			double note = 0.0;
+			long frameN = 0;
 
 			double[] notes;
 			double[] volumes;
+
+			// hmm... stats on the data gets shared
+
+			double scanlineMean;
+			double scanlineDev;
+			double scanlineCenter;
 
 			@Override
 			public void onClick(View v) {
@@ -188,13 +199,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						@Override
 						public void run() {
 
-							// handler.post(new Runnable() {
-							// 	@Override	
-							// 	public void run() {
-							// 		textView.setText(String.format("PaperTracker - playback starting!\n"));									
-							// 	}
-							// });
-
 							double loud = 1.0;
 							int voice = 0;
 
@@ -230,16 +234,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							camera.setPreviewCallbackWithBuffer(new PreviewCallback() {
 
 								final Size previewSize = camera.getParameters().getPreviewSize();
-								final long startTime = System.currentTimeMillis();
-								final int framesPerMessage = 5;
 
 								final int scanlineOffset = previewSize.width * (previewSize.height >> 1);
 								final int scanlineN = previewSize.width;
 
 								int[] scanline = new int[scanlineN];
-								double scanlineMean;
-								double scanlineDev;
-								double scanlineCenter;
 
 								private void setScanline(byte[] data) {
 									scanlineMean = 0;
@@ -266,8 +265,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									scanlineCenter = (double)scanlineMass / (double)scanlinePop;
 								}
 
-								long frameN = 0;
-
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
 
@@ -277,15 +274,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									note = 36.0 * scanlineCenter / (double)(scanlineN - 1.0);
 
 									frameN++;
-
-									long elapsedTime = System.currentTimeMillis() - startTime;
-									double secs = (double)elapsedTime / 1000.0;
-									double fps = (double)frameN / secs;
-
-									if(frameN % framesPerMessage == 1) {
-										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
-										scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
-									}
 
 									camera.addCallbackBuffer(data);
 								}
@@ -297,6 +285,35 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 							e.printStackTrace();
 						}
+
+						//
+						//
+						// textview status message thread
+						//
+						//
+						
+						new Thread(new Runnable() {
+							 @Override
+							public void run() {
+								while(previewing) {
+									try {
+										Thread.sleep(250);
+										handler.post(new Runnable() {
+											@Override	
+											public void run() {
+												long elapsedTime = System.currentTimeMillis() - startTime;
+												double secs = (double)elapsedTime / 1000.0;
+												double fps = (double)frameN / secs;
+												textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
+												scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
+											}
+										});
+									} catch(InterruptedException e) {
+										// who cares
+									}
+								}
+							}
+						}).start();
 
 						// end of if(camera != null) { ... }
 					}
