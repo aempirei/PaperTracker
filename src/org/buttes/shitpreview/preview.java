@@ -42,39 +42,66 @@ class AudioPlayer {
 	final int secondBufferSize = sampleRate * sampleSize;
 	final int bufferSize = Math.max(minBufferSize, secondBufferSize);
 
-	final int sampleBufferN = sampleRate / 5;
+	final int sampleBufferN = sampleRate / 15;
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 3;
-	final long[] voices = new long[voicesN];
+	final int voicesN = 8;
+	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
       audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
 	}
 
-	private double getFrequency(double note) {
-		final double baseExponent = Math.pow(2.0, 1.0 / 12.0);
-		final double baseFrequency = 55.0;
+	final double baseExponent = Math.pow(2.0, 1.0 / 12.0);
+	final double baseFrequency = 55.0;
+
+	private double getNoteHz(double note) {
 		return baseFrequency * Math.pow(baseExponent, note);
 	}
 
-	private short getNoteSample(long sampleN, long sampleRate, double note, double volume) {
-		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(2.0 * Math.PI * getFrequency(note) * (double)sampleN / (double)sampleRate));
+	final double noteStepEpsilon = 2.0 * Math.PI / (double)sampleRate;
+
+	private double getNoteStep(double note) {
+		return getNoteHz(note) * noteStepEpsilon;
+	}
+
+	private short getNoteSample(long sampleN, double note, double volume) {
+		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(getNoteStep(note) * sampleN));
+	}
+
+	final double boundaryMax = 2.0 * Math.PI;
+
+	private void stepVoice(int voice, double note) {
+		voices[voice] += getNoteStep(note);
+		if(voices[voice] > boundaryMax)
+			voices[voice] -= boundaryMax;
+	}
+	
+	private short getNoteSample(int voice, double note, double volume) {
+		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(voices[voice]));
 	}
 
 	public void setSampleBuffer(int voice, double note, double volume) {
+
 		if(voice < 0 || voice >= voicesN)
 			voice = 0;
-		for(int i = 0; i < sampleBuffer.length; i++)
-			sampleBuffer[i] = getNoteSample(voices[voice]++, sampleRate, note, volume);
+
+		for(int i = 0; i < sampleBuffer.length; i++) {
+			sampleBuffer[i] = getNoteSample(voice, note, volume);
+			stepVoice(voice, note);
+		}
 	}
 
 	public void addSampleBuffer(int voice, double note, double volume) {
+
 		if(voice < 0 || voice >= voicesN)
 			voice = 0;
-		for(int i = 0; i < sampleBuffer.length; i++)
-			sampleBuffer[i] += getNoteSample(voices[voice]++, sampleRate, note, volume);
+
+		for(int i = 0; i < sampleBuffer.length; i++) {
+			sampleBuffer[i] += getNoteSample(voice, note, volume);
+			stepVoice(voice, note);
+		}
 	}
 
 	public void write() {
@@ -133,6 +160,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		buttonPlay.setOnClickListener(new Button.OnClickListener() {
 
+			double note = 12.0;
+
+			double[] notes;
+			double[] volumes;
+
 			@Override
 			public void onClick(View v) {
 
@@ -147,21 +179,22 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					previewing = true;
 
 					final Handler handler = new Handler();
+					final AudioPlayer player = new AudioPlayer();
 
+					notes = new double[player.voicesN];
+					volumes = new double[player.voicesN];
+					
 					new Thread(new Runnable() {
 						@Override
 						public void run() {
 
-							AudioPlayer player = new AudioPlayer();
+							// handler.post(new Runnable() {
+							// 	@Override	
+							// 	public void run() {
+							// 		textViewMessage.setText(String.format("PaperTracker - playback starting!\n"));									
+							// 	}
+							// });
 
-							handler.post(new Runnable() {
-								@Override	
-								public void run() {
-									textViewMessage.setText(String.format("PaperTracker - playback starting!\n"));									
-								}
-							});
-
-							double note = 30.0;
 							double loud = 1.0;
 							int voice = 0;
 
@@ -219,6 +252,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									// pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
 									// pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
 
+									note += 1.0;
+
 									frameN++;
 
 									long elapsedTime = System.currentTimeMillis() - startTime;
@@ -227,7 +262,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									double fps = (double)frameN / secs;
 
 									if(frameN % framesPerMessage == 1) {
-										textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %.1ffps %.1fhz", frameN, secs, fps, fps * (double)frameWidth));
+										textViewMessage.setText(String.format("PaperTracker - %.0f #%d %.1fs %.1ffps %.1fhz", note, frameN, secs, fps, fps * (double)frameWidth));
 									}
 								}
 							});
