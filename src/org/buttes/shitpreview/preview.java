@@ -8,6 +8,7 @@ import java.nio.ByteOrder;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Handler;
 import android.graphics.PixelFormat;
 import android.graphics.ImageFormat;
 import android.hardware.Camera;
@@ -137,15 +138,24 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 				if(previewing == false) {
 
+					final Handler handler = new Handler();
+
 					new Thread(new Runnable() {
 						@Override
 						public void run() {
 
+							AudioPlayer player = new AudioPlayer();
+
+							handler.post(new Runnable() {
+								@Override	
+								public void run() {
+									textViewMessage.setText(String.format("PaperTracker - playback starting!\n"));									
+								}
+							});
+
 							double note = 36.0;
 							double loud = 1.0;
 							int voice = 0;
-
-							AudioPlayer player = new AudioPlayer();
 
 							while(previewing) {
 								player.setSampleBuffer(voice, note, loud);
@@ -154,8 +164,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 						}
 					}).start();
-
-					// ((TextView)findViewById(R.id.message)).setText(String.format("PaperTracker - playback complete!\n"));
 
 					previewing = true;
 
