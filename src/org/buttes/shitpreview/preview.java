@@ -161,7 +161,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								}
 							});
 
-							double note = 36.0;
+							double note = 30.0;
 							double loud = 1.0;
 							int voice = 0;
 
@@ -179,7 +179,10 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					//
 					//
 
-					camera = Camera.open();
+					if(camera == null) {
+						camera = Camera.open();
+					}
+
 					if(camera != null) {
 
 						try {
@@ -225,8 +228,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 									if(frameN % framesPerMessage == 1) {
 										textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %.1ffps %.1fhz", frameN, secs, fps, fps * (double)frameWidth));
-										// textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
-										// counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
 									}
 								}
 							});
@@ -261,8 +262,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 					if(camera != null) {
 						camera.stopPreview();
-						camera.release();
-						camera = null;
 					}
 
 					previewing = false;
