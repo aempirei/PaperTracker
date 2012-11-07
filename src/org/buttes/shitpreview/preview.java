@@ -2,6 +2,7 @@ package org.buttes.shitpreview;
 import java.io.IOException;
 import java.util.List;
 import java.lang.Math;
+import java.lang.Thread;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import android.app.Activity;
@@ -24,12 +25,78 @@ import android.media.AudioTrack.*;
 import android.media.AudioFormat;
 import android.media.AudioFormat.*;
 import android.media.AudioManager;
+
+class AudioPlayer {
+
+	AudioTrack audio;
+
+	final int sampleRate = 11025;
+	final int sampleSize = 2; // in bytes
+	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
+	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
+								(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
+								AudioFormat.ENCODING_INVALID;
+
+	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
+	final int secondBufferSize = sampleRate * sampleSize;
+	final int bufferSize = Math.max(minBufferSize, secondBufferSize);
+
+	final int sampleBufferN = sampleRate / 5;
+	final short[] sampleBuffer = new short[sampleBufferN];
+
+	final int voicesN = 3;
+	final long[] voices = new long[voicesN];
+
+	public AudioPlayer() {
+      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
+		audio.play();
+	}
+
+	private double getFrequency(double note) {
+		final double baseExponent = Math.pow(2.0, 1.0 / 12.0);
+		final double baseFrequency = 55.0;
+		return baseFrequency * Math.pow(baseExponent, note);
+	}
+
+	private short getNoteSample(long sampleN, long sampleRate, double note, double volume) {
+		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(2.0 * Math.PI * getFrequency(note) * (double)sampleN / (double)sampleRate));
+	}
+
+	public void setSampleBuffer(int voice, double note, double volume) {
+		if(voice < 0 || voice >= voicesN)
+			voice = 0;
+		for(int i = 0; i < sampleBuffer.length; i++)
+			sampleBuffer[i] = getNoteSample(voices[voice]++, sampleRate, note, volume);
+	}
+
+	public void addSampleBuffer(int voice, double note, double volume) {
+		if(voice < 0 || voice >= voicesN)
+			voice = 0;
+		for(int i = 0; i < sampleBuffer.length; i++)
+			sampleBuffer[i] += getNoteSample(voices[voice]++, sampleRate, note, volume);
+	}
+
+	public void write() {
+		audio.write(sampleBuffer, 0, sampleBuffer.length);
+	}
+}
+
 public class preview extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
 {
 	Camera camera;
 	SurfaceView surfaceView;
 	SurfaceHolder surfaceHolder;
+
+	TextView textViewMessage;
+	Button buttonPlay;
+	Button buttonPause;
+
 	boolean previewing = false;
+
+
+	/*
+	 * get frame size of a preview image (assuming NV21 format)
+	 */
 
 	private int getFrameSize() {
 		Camera.Parameters param = camera.getParameters();
@@ -43,199 +110,157 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	public void onCreate(Bundle savedInstanceState)
 	{
 
-	super.onCreate(savedInstanceState);
-	setContentView(R.layout.main);
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.main);
 
-	Button buttonStartCameraPreview = (Button)findViewById(R.id.startcamerapreview);
-	Button buttonStopCameraPreview = (Button)findViewById(R.id.stopcamerapreview);
+		// find widgets
 
-	getWindow().setFormat(PixelFormat.YCbCr_420_SP);
-	getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		textViewMessage = (TextView)findViewById(R.id.message);
+		buttonPlay = (Button)findViewById(R.id.startcamerapreview);
+		buttonPause = (Button)findViewById(R.id.stopcamerapreview);
+		surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
 
-	surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
-	surfaceHolder = surfaceView.getHolder();
-	surfaceHolder.addCallback(this);
-	surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+		getWindow().setFormat(PixelFormat.YCbCr_420_SP);
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-	// possibly updated by callbacks
+		surfaceHolder = surfaceView.getHolder();
 
-	final TextView message = (TextView)findViewById(R.id.message);
+		surfaceHolder.addCallback(this);
+		surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 
-	// configure audio ahead-of-time
+		// setup start camera button
 
-	final int sampleRate = 8000;
-	final int sampleSize = 2; // in bytes
-	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
-	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
-										(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
-										AudioFormat.ENCODING_INVALID;
+		buttonPlay.setOnClickListener(new Button.OnClickListener() {
 
-	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-	final int secondBufferSize = sampleRate * sampleSize;
-	final int bufferSize = Math.max(minBufferSize, secondBufferSize);
+			@Override
+			public void onClick(View v) {
 
-	final AudioTrack noise = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
+				if(previewing == false) {
 
-	// setup start camera button
+					new Thread(new Runnable() {
+						@Override
+						public void run() {
 
-	buttonStartCameraPreview.setOnClickListener(new Button.OnClickListener() {
-		@Override
-		public void onClick(View v) {
+							double note = 36.0;
+							double loud = 1.0;
+							int voice = 0;
 
-			if(!previewing) {
+							AudioPlayer player = new AudioPlayer();
 
-				camera = Camera.open();
-				
-				if (camera != null) {
-
-					try {
-
-						camera.setPreviewDisplay(surfaceHolder);
-						camera.setDisplayOrientation(0);
-	
-						final Size previewSize = camera.getParameters().getPreviewSize();
-					
-						final int frameWidth = previewSize.width;
-						final int frameOffset = previewSize.height / 2;
-
-						final long startTime = System.currentTimeMillis();
-						final int framesPerMessage = 10;
-						final double targetFps = (double)sampleRate / frameWidth;
-
-						final int waveWidth = sampleRate / 5;
-						final short tone[][] = new short[frameWidth][frameWidth];
-
-						for(int i = 0;i<frameWidth;i++) {
-							for(int j = 0;j<frameWidth;j++) {
-								tone[i][j] = (short)Math.rint(16384.0 * Math.sin(j * Math.PI * 55.0 * Math.pow(2.0, (double)i / 12.0)));
+							while(previewing) {
+								player.setSampleBuffer(voice, note, loud);
+								player.write();
 							}
+
 						}
+					}).start();
 
-						camera.setPreviewCallback(new PreviewCallback() {
+					// ((TextView)findViewById(R.id.message)).setText(String.format("PaperTracker - playback complete!\n"));
 
-							// make these mutable longs cleaner at some point
-							// for now 0:frames 1:elapsed_time
+					previewing = true;
 
-							final long[] counters = new long[16];
-							final short[] pcmBuffer = new short[frameWidth];
-							final byte[] conv = new byte[frameWidth];
+					camera = null; // Camera.open();
 
-							@Override
-							public void onPreviewFrame(byte[] data, Camera camera) {
+					if (camera != null) {
 
-							/*
-							 * TODO:
-							 * 1. perform 8-bit Y-channel to 16-bit mono PCM conversion
-							 * 2. invert, normalize & stretch pcm
-							 * 3. centroid position and width detection
-							 * 4. select frequency scale or proceedural instrument table
-							 * a. probably not a not fourier basis like DCT-II/II transform pairs,
-							 * b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
-							 * 5. centroid position, width to frequency, amplitude conversion
-							 * 6. freq to time domain composition and compress range
-							 * 7. lag compensation
-							 */
+						try {
 
-							 double mean;
-							 double std;
-							 double sum;
-							 long w;
-							 long v;
-							 w=0;
-							 sum=0.0;
+							camera.setPreviewDisplay(surfaceHolder);
+							camera.setDisplayOrientation(0);
 
-							 for(int i = 0; i < frameWidth; i++) {
-								 double v = i * (255-(((int)data[frameOffset + i] & 0x00ff) + 128));
+							final Size previewSize = camera.getParameters().getPreviewSize();
 
-								 /*
-									 pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
-									 pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
-									 pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
-								  */
+							final int frameWidth = previewSize.width;
+							final int frameOffset = previewSize.height / 2;
 
-								  sum += v;
+							final long startTime = System.currentTimeMillis();
+							final int framesPerMessage = 10;
+
+							camera.setPreviewCallback(new PreviewCallback() {
+
+								@Override
+								public void onPreviewFrame(byte[] data, Camera camera) {
+
+									// TODO:
+									// 1. perform 8-bit Y-channel to 16-bit mono PCM conversion
+									// 2. invert, normalize & stretch pcm
+									// 3. centroid position and width detection
+									// 4. select frequency scale or proceedural instrument table
+									// a. probably not a not fourier basis like DCT-II/II transform pairs,
+									// b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
+									// 5. centroid position, width to frequency, amplitude conversion
+									// 6. freq to time domain composition and compress range
+									// 7. lag compensation
+
+									// pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
+									// pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
+									// pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
+
+									// System.currentTimeMillis() - startTime;
+
+									// double secs = (double)counters[1] / 1000.0;
+									// double fps = (double)counters[0] / secs;
+									// double runRate = targetFps / fps;
+
+									// if(counters[0] % framesPerMessage == 1) {
+									// 	textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
+									// 		counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
+									// }
 								}
+							});
 
-								mean = sum / frameWidth;
-								
-								int arg = (int)Math.rint(mean);
+							camera.startPreview();
 
-								noise.write(tone[arg], 0, frameWidth);
-								//noise.write(pcmBuffer, 0, frameWidth);
-								//noise.write(pcmBuffer, 0, frameWidth);
+							previewing = true;
 
-								counters[0]++;
-								counters[1] = System.currentTimeMillis() - startTime;
+						} catch (IOException e) {
 
-								double secs = (double)counters[1] / 1000.0;
-								double fps = (double)counters[0] / secs;
-								double runRate = targetFps / fps;
-
-								if(counters[0] % framesPerMessage == 1) {
-									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
-												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
-								}
-							}
-
-						});
-
-						camera.startPreview();
-
-						noise.play();
-
-						previewing = true;
-
-					} catch (IOException e) {
-
-						e.printStackTrace();
+							e.printStackTrace();
+						}
 					}
 				}
 			}
-		}});
+		});
 
-	// setup stop camera button
+		//
+		// setup stop camera button
+		//
 
-	buttonStopCameraPreview.setOnClickListener(new Button.OnClickListener() {
+		buttonPause.setOnClickListener(new Button.OnClickListener() {
 
-		@Override
-		public void onClick(View v) {
+			@Override
+			public void onClick(View v) {
 
-			if(camera != null && previewing) {
+				if(previewing) {
 
-				camera.stopPreview();
-				camera.release();
+					if(camera != null) {
+						camera.stopPreview();
+						camera.release();
+						camera = null;
+					}
 
-				noise.stop();
-
-				camera = null;
-
-				previewing = false;
+					previewing = false;
+				}
 			}
-		}});
+		});
 
 	}
 
 	@Override
-		public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-			// TODO Auto-generated method stub
-
-		}
+	public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+	}
 
 	@Override
-		public void surfaceCreated(SurfaceHolder holder) {
-			// TODO Auto-generated method stub
-
-		}
+	public void surfaceCreated(SurfaceHolder holder) {
+	}
 
 	@Override
-		public void surfaceDestroyed(SurfaceHolder holder) {
-			// TODO Auto-generated method stub
-
-		}
+	public void surfaceDestroyed(SurfaceHolder holder) {
+	}
 
 	@Override
-		public void onPreviewFrame(byte[] data, Camera camera) {
-		}
+	public void onPreviewFrame(byte[] data, Camera camera) {
+	}
 }
 
 /* 
