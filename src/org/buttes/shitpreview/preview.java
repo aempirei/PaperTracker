@@ -39,15 +39,15 @@ class AudioPlayer {
 								(sampleSize == 2) ? AudioFormat.ENCODING_PCM_16BIT :
 								AudioFormat.ENCODING_INVALID;
 
-	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-	final int sampleBufferN = sampleRate / 15;
+	final int bufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding) * 2;
+	final int sampleBufferN = sampleRate / 25;
 	final short[] sampleBuffer = new short[sampleBufferN];
 
 	final int voicesN = 8;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
-      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, 2 * minBufferSize, AudioTrack.MODE_STREAM);
+      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
 	}
 
@@ -61,7 +61,7 @@ class AudioPlayer {
 		return getNoteHz(note) * 2.0 * Math.PI / (double)sampleRate;
 	}
 
-	final double boundaryMax = 16.0 * Math.PI;
+	final double boundaryMax = 8.0 * Math.PI;
 
 	private void stepVoice(int voice, double note) {
 		voices[voice] += getNoteStep(note);
@@ -69,20 +69,20 @@ class AudioPlayer {
 			voices[voice] -= boundaryMax;
 	}
 	
-	private short getNoteSample(int voice, double note, double volume) {
-		return (short)Math.rint(Short.MAX_VALUE * volume * Math.sin(voices[voice]));
+	private short getSample(int voice, double volume) {
+		return (short)(Short.MAX_VALUE * volume * Math.sin(voices[voice]));
 	}
 
 	public void setSampleBuffer(int voice, double note, double volume) {
 		for(int i = 0; i < sampleBuffer.length; i++) {
-			sampleBuffer[i] = getNoteSample(voice, note, volume);
+			sampleBuffer[i] = getSample(voice, volume);
 			stepVoice(voice, note);
 		}
 	}
 
 	public void addSampleBuffer(int voice, double note, double volume) {
 		for(int i = 0; i < sampleBuffer.length; i++) {
-			sampleBuffer[i] += getNoteSample(voice, note, volume);
+			sampleBuffer[i] += getSample(voice, volume);
 			stepVoice(voice, note);
 		}
 	}
@@ -146,13 +146,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		button.setOnClickListener(new Button.OnClickListener() {
 
-			final int callbackBuffersN = 10;
-			double note = 1.0;
+			final int callbackBuffersN = 20;
+			double note = 0.0;
 
 			double[] notes;
 			double[] volumes;
-
-			private ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
 			@Override
 			public void onClick(View v) {
@@ -200,12 +198,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							int voice = 0;
 
 							while(previewing) {
-								lock.readLock().lock();
-								try {
-									player.setSampleBuffer(voice, note, loud);
-								} finally {
-									lock.readLock().unlock();
-								}
+								player.setSampleBuffer(voice, note, loud);
 								player.write();
 							}
 
@@ -237,29 +230,35 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 								final Size previewSize = camera.getParameters().getPreviewSize();
 								final long startTime = System.currentTimeMillis();
-								final int framesPerMessage = 10;
+								final int framesPerMessage = 5;
 
 								final int scanlineOffset = previewSize.width * (previewSize.height >> 1);
 								final int scanlineN = previewSize.width;
 
 								int[] scanline = new int[scanlineN];
-								int scanlineMean;
+								double scanlineMean;
+								double scanlineDev;
 								double scanlineCenter;
 
 								private void setScanline(byte[] data) {
 									scanlineMean = 0;
 									for(int i = 0; i < scanline.length; i++) {
 										scanline[i] = (int)(0xff & data[scanlineOffset + i]);
-										scanlineMean += scanline[i];
+										scanlineMean += (double)scanline[i];
 									}
-									scanlineMean /= scanline.length;
+									scanlineMean /= (double)scanline.length;
+									scanlineDev = 0;
+									for(int i = 0; i < scanline.length; i++) {
+										scanlineDev += Math.pow((double)scanline[i] - scanlineMean, 2.0);
+									}
+									scanlineDev = Math.sqrt(scanlineDev / (double)scanline.length);
 								}
 
 								private void processScanline() {
-									int scanlinePop = 0;
+									int scanlinePop = 1;
 									int scanlineMass = 0;
 									for(int i = 0; i < scanline.length; i++) {
-										int k = (scanline[i] < (scanlineMean - 4)) ? 1 : 0;
+										int k = (scanline[i] < scanlineMean - 2.0 * scanlineDev) ? 1 : 0;
 										scanlinePop += k;
 										scanlineMass += k * i;
 									}
@@ -274,12 +273,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									setScanline(data);
 									processScanline();
 
-									// lock.writeLock().lock();
-									// try {
-										note = 48.0 * scanlineCenter / (double)(scanlineN - 1.0);
-									// } finally {
-									// 	lock.writeLock().unlock();
-									// }
+									note = 36.0 * scanlineCenter / (double)(scanlineN - 1.0);
 
 									frameN++;
 
@@ -288,7 +282,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									double fps = (double)frameN / secs;
 
 									if(frameN % framesPerMessage == 1) {
-										textView.setText(String.format("PaperTracker - %.1f %.1f #%d %.1fs %.1ffps", scanlineCenter, note, frameN, secs, fps));
+										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  #%d  %.1fs   %.1ffps",
+										scanlineCenter, scanlineMean, scanlineDev, note, frameN, secs, fps));
 									}
 
 									camera.addCallbackBuffer(data);
