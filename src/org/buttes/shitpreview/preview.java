@@ -179,7 +179,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					//
 					//
 
-					if((camera = Camera.open())) {
+					camera = Camera.open();
+					if(camera != null) {
 
 						try {
 
