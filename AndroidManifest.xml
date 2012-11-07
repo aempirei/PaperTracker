@@ -13,7 +13,8 @@
             </intent-filter>
         </activity>
     </application>
-    <uses-sdk android:targetSdkVersion="8" />
-    <!-- uses-sdk android:minSdkVersion="8" android:maxSdkVersion="8" /-->
-    <uses-permission android:name="android.permission.CAMERA"></uses-permission>
+    <!-- uses-sdk android:targetSdkVersion="8" -->
+    <uses-sdk android:minSdkVersion="8" />
+	 <uses-feature android:name="android.hardware.camera" />
+    <uses-permission android:name="android.permission.CAMERA" />
 </manifest> 

@@ -8,6 +8,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
 import android.graphics.PixelFormat;
+import android.graphics.ImageFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.*;
 import android.os.Bundle;
@@ -29,6 +30,14 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	SurfaceView surfaceView;
 	SurfaceHolder surfaceHolder;
 	boolean previewing = false;
+
+	private int getFrameSize() {
+		Camera.Parameters param = camera.getParameters();
+		int imgformat = param.getPreviewFormat();
+		int bitsperpixel = ImageFormat.getBitsPerPixel(imgformat);
+		Camera.Size camerasize = param.getPreviewSize();
+		return (camerasize.width * camerasize.height * bitsperpixel) / 8;
+	};
 
 	@Override
 	public void onCreate(Bundle savedInstanceState)
@@ -54,7 +63,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 	// configure audio ahead-of-time
 
-	final int sampleRate = 11025;
+	final int sampleRate = 8000;
 	final int sampleSize = 2; // in bytes
 	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
 	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
@@ -90,9 +99,17 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						final int frameOffset = previewSize.height / 2;
 
 						final long startTime = System.currentTimeMillis();
-						final int targetRunRate = 5;
 						final int framesPerMessage = 10;
 						final double targetFps = (double)sampleRate / frameWidth;
+
+						final int waveWidth = sampleRate / 5;
+						final short tone[][] = new short[frameWidth][frameWidth];
+
+						for(int i = 0;i<frameWidth;i++) {
+							for(int j = 0;j<frameWidth;j++) {
+								tone[i][j] = (short)Math.rint(16384.0 * Math.sin(j * Math.PI * 55.0 * Math.pow(2.0, (double)i / 12.0)));
+							}
+						}
 
 						camera.setPreviewCallback(new PreviewCallback() {
 
@@ -101,6 +118,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 							final long[] counters = new long[16];
 							final short[] pcmBuffer = new short[frameWidth];
+							final byte[] conv = new byte[frameWidth];
 
 							@Override
 							public void onPreviewFrame(byte[] data, Camera camera) {
@@ -118,14 +136,33 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							 * 7. lag compensation
 							 */
 
-								for(int i = 0; i < pcmBuffer.length; i++) {
-									pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
-									pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
-									pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
+							 double mean;
+							 double std;
+							 double sum;
+							 long w;
+							 long v;
+							 w=0;
+							 sum=0.0;
+
+							 for(int i = 0; i < frameWidth; i++) {
+								 double v = i * (255-(((int)data[frameOffset + i] & 0x00ff) + 128));
+
+								 /*
+									 pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
+									 pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
+									 pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
+								  */
+
+								  sum += v;
 								}
 
-								for(int i = 0; i < targetRunRate; i++)
-									noise.write(pcmBuffer, 0, frameWidth);
+								mean = sum / frameWidth;
+								
+								int arg = (int)Math.rint(mean);
+
+								noise.write(tone[arg], 0, frameWidth);
+								//noise.write(pcmBuffer, 0, frameWidth);
+								//noise.write(pcmBuffer, 0, frameWidth);
 
 								counters[0]++;
 								counters[1] = System.currentTimeMillis() - startTime;
@@ -135,8 +172,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								double runRate = targetFps / fps;
 
 								if(counters[0] % framesPerMessage == 1) {
-									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f:%.1ffps (X%.1f %s)",
-												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, runRate < targetRunRate ? "good" : "bad"));
+									message.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
+												counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
 								}
 							}
 
