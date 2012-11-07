@@ -1,6 +1,7 @@
 package org.buttes.shitpreview;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.lang.Math;
 import java.lang.Thread;
 import java.nio.ByteBuffer;
@@ -31,7 +32,7 @@ class AudioPlayer {
 
 	AudioTrack audio;
 
-	final int sampleRate = 22050;
+	final int sampleRate = 11025;
 	final int sampleSize = 2; // in bytes
 	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
 	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
@@ -39,7 +40,7 @@ class AudioPlayer {
 								AudioFormat.ENCODING_INVALID;
 
 	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-	final int sampleBufferN = sampleRate / 25;
+	final int sampleBufferN = sampleRate / 15;
 	final short[] sampleBuffer = new short[sampleBufferN];
 
 	final int voicesN = 8;
@@ -145,11 +146,13 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		button.setOnClickListener(new Button.OnClickListener() {
 
-			final int callbackBuffersN = 15;
+			final int callbackBuffersN = 10;
 			double note = 1.0;
 
 			double[] notes;
 			double[] volumes;
+
+			private ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
 			@Override
 			public void onClick(View v) {
@@ -197,7 +200,12 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							int voice = 0;
 
 							while(previewing) {
-								player.setSampleBuffer(voice, Math.rint(note), loud);
+								lock.readLock().lock();
+								try {
+									player.setSampleBuffer(voice, note, loud);
+								} finally {
+									lock.readLock().unlock();
+								}
 								player.write();
 							}
 
@@ -235,32 +243,27 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								final int scanlineN = previewSize.width;
 
 								int[] scanline = new int[scanlineN];
-								long[] scanlineDot = new long[scanlineN];
 								int scanlineMean;
-								int scanlineSum;
-								long scanlineSum2;
-								long scanlineDotSum;
 								double scanlineCenter;
 
 								private void setScanline(byte[] data) {
-									scanlineSum = 0;
+									scanlineMean = 0;
 									for(int i = 0; i < scanline.length; i++) {
 										scanline[i] = (int)(0xff & data[scanlineOffset + i]);
-										scanlineSum += scanline[i];
+										scanlineMean += scanline[i];
 									}
-									scanlineMean = scanlineSum / scanline.length;
+									scanlineMean /= scanline.length;
 								}
 
 								private void processScanline() {
-									scanlineSum2 = 0;
-									scanlineDotSum = 0;
+									int scanlinePop = 0;
+									int scanlineMass = 0;
 									for(int i = 0; i < scanline.length; i++) {
-										int k = (scanline[i] < scanlineMean) ? 1 : 0;
-										scanlineDot[i] = k * i;
-										scanlineSum2 += k;
-										scanlineDotSum += scanlineDot[i];
+										int k = (scanline[i] < (scanlineMean - 4)) ? 1 : 0;
+										scanlinePop += k;
+										scanlineMass += k * i;
 									}
-									scanlineCenter = (double)scanlineDotSum / (double)scanlineSum2;
+									scanlineCenter = (double)scanlineMass / (double)scanlinePop;
 								}
 
 								long frameN = 0;
@@ -271,7 +274,12 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									setScanline(data);
 									processScanline();
 
-									note = 36.0 * scanlineCenter / (double)(scanlineN - 1.0);
+									// lock.writeLock().lock();
+									// try {
+										note = 48.0 * scanlineCenter / (double)(scanlineN - 1.0);
+									// } finally {
+									// 	lock.writeLock().unlock();
+									// }
 
 									frameN++;
 
