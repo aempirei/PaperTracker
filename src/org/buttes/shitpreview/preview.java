@@ -53,24 +53,25 @@ class AudioPlayer {
 
 	final double baseFrequency = 110.0;
 
-	private double getNoteHz(double note) {
+	public double getNoteHz(double note) {
 		return baseFrequency * Math.pow(2.0, note / 12.0);
 	}
 
 	private double getNoteStep(double note) {
-		return getNoteHz(note) * 2.0 * Math.PI / (double)sampleRate;
+		return getNoteHz(note) / (double)sampleRate;
 	}
-
-	final double boundaryMax = 8.0 * Math.PI;
 
 	private void stepVoice(int voice, double note) {
 		voices[voice] += getNoteStep(note);
-		if(voices[voice] > boundaryMax)
-			voices[voice] -= boundaryMax;
+		voices[voice] -= Math.floor(voices[voice]);
 	}
-	
+
+	private double wave(double x) {
+		return (x < 0.5) ? 1.0 : -1.0; 
+	}
+
 	private short getSample(int voice, double volume) {
-		return (short)(Short.MAX_VALUE * volume * Math.sin(voices[voice]));
+		return (short)(Short.MAX_VALUE * volume * wave(voices[voice]));
 	}
 
 	public void setSampleBuffer(int voice, double note, double volume) {
@@ -282,8 +283,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									double fps = (double)frameN / secs;
 
 									if(frameN % framesPerMessage == 1) {
-										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  #%d  %.1fs   %.1ffps",
-										scanlineCenter, scanlineMean, scanlineDev, note, frameN, secs, fps));
+										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
+										scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
 									}
 
 									camera.addCallbackBuffer(data);
