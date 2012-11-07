@@ -138,6 +138,14 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 				if(previewing == false) {
 
+					//
+					//
+					// start up the audio player
+					//
+					//
+
+					previewing = true;
+
 					final Handler handler = new Handler();
 
 					new Thread(new Runnable() {
@@ -165,26 +173,29 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						}
 					}).start();
 
-					previewing = true;
+					//
+					//
+					// start up the camera
+					//
+					//
 
-					camera = null; // Camera.open();
-
-					if (camera != null) {
+					if((camera = Camera.open())) {
 
 						try {
 
 							camera.setPreviewDisplay(surfaceHolder);
 							camera.setDisplayOrientation(0);
 
-							final Size previewSize = camera.getParameters().getPreviewSize();
-
-							final int frameWidth = previewSize.width;
-							final int frameOffset = previewSize.height / 2;
-
-							final long startTime = System.currentTimeMillis();
-							final int framesPerMessage = 10;
+							// final int frameOffset = previewSize.height / 2;
 
 							camera.setPreviewCallback(new PreviewCallback() {
+
+								final Size previewSize = camera.getParameters().getPreviewSize();
+								final int frameWidth = previewSize.width;
+								final long startTime = System.currentTimeMillis();
+								final int framesPerMessage = 4;
+
+								long frameN = 0;
 
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
@@ -204,30 +215,36 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									// pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
 									// pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
 
-									// System.currentTimeMillis() - startTime;
+									frameN++;
 
-									// double secs = (double)counters[1] / 1000.0;
-									// double fps = (double)counters[0] / secs;
-									// double runRate = targetFps / fps;
+									long elapsedTime = System.currentTimeMillis() - startTime;
 
-									// if(counters[0] % framesPerMessage == 1) {
-									// 	textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
-									// 		counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
-									// }
+									double secs = (double)elapsedTime / 1000.0;
+									double fps = (double)frameN / secs;
+
+									if(frameN % framesPerMessage == 1) {
+										textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %.1ffps %.1fhz", frameN, secs, fps, fps * (double)frameWidth));
+										// textViewMessage.setText(String.format("PaperTracker - #%d %.1fs %dspf %dkB %.1f : %.1f fps X %.1f %.1f hz",
+										// counters[0], secs, frameWidth, bufferSize >> 10, targetFps, fps, runRate, fps * frameWidth));
+									}
 								}
 							});
 
 							camera.startPreview();
 
-							previewing = true;
-
 						} catch (IOException e) {
 
 							e.printStackTrace();
 						}
+
+						// end of if((camera = Camera.open())) { ... }
 					}
+
+					// end of if(previewing == false) { ... } 
 				}
-			}
+
+				// end of onClick()
+			} 
 		});
 
 		//
