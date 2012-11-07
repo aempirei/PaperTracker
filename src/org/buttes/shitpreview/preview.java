@@ -39,17 +39,14 @@ class AudioPlayer {
 								AudioFormat.ENCODING_INVALID;
 
 	final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding);
-	final int secondBufferSize = sampleRate * sampleSize;
-	final int bufferSize = Math.max(minBufferSize, secondBufferSize);
-
-	final int sampleBufferN = sampleRate / 15;
+	final int sampleBufferN = sampleRate / 25;
 	final short[] sampleBuffer = new short[sampleBufferN];
 
 	final int voicesN = 8;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
-      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
+      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, minBufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
 	}
 
@@ -126,12 +123,17 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	 * get frame size of a preview image (assuming NV21 format)
 	 */
 
+	private int frameSize;
+
 	private int getFrameSize() {
-		Camera.Parameters param = camera.getParameters();
-		int imgformat = param.getPreviewFormat();
-		int bitsperpixel = ImageFormat.getBitsPerPixel(imgformat);
-		Camera.Size camerasize = param.getPreviewSize();
-		return (camerasize.width * camerasize.height * bitsperpixel) / 8;
+		if(frameSize == 0) {
+			Camera.Parameters param = camera.getParameters();
+			int imgformat = param.getPreviewFormat();
+			int bitsperpixel = ImageFormat.getBitsPerPixel(imgformat);
+			Camera.Size camerasize = param.getPreviewSize();
+			frameSize = (camerasize.width * camerasize.height * bitsperpixel) / 8;
+		}
+		return frameSize;
 	};
 
 	@Override
@@ -160,7 +162,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		buttonPlay.setOnClickListener(new Button.OnClickListener() {
 
-			double note = 12.0;
+			final int callbackBuffersN = 15;
+			double note = 1.0;
 
 			double[] notes;
 			double[] volumes;
@@ -223,47 +226,69 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							camera.setPreviewDisplay(surfaceHolder);
 							camera.setDisplayOrientation(0);
 
-							// final int frameOffset = previewSize.height / 2;
+							for(int i = 0; i < callbackBuffersN; i++) {
+								camera.addCallbackBuffer(new byte[getFrameSize()]);
+							}
 
-							camera.setPreviewCallback(new PreviewCallback() {
+							camera.setPreviewCallbackWithBuffer(new PreviewCallback() {
 
 								final Size previewSize = camera.getParameters().getPreviewSize();
-								final int frameWidth = previewSize.width;
 								final long startTime = System.currentTimeMillis();
 								final int framesPerMessage = 4;
+
+								final int scanlineOffset = previewSize.width * (previewSize.height >> 1);
+								final int scanlineN = previewSize.width;
+
+								int[] scanline = new int[scanlineN];
+								long[] scanlineDot = new long[scanlineN];
+								int scanlineMean;
+								int scanlineSum;
+								long scanlineSum2;
+								long scanlineDotSum;
+								double scanlineCenter;
+
+								private void setScanline(byte[] data) {
+									scanlineSum = 0;
+									for(int i = 0; i < scanline.length; i++) {
+										scanline[i] = (int)(0xff & data[scanlineOffset + i]);
+										scanlineSum += scanline[i];
+									}
+									scanlineMean = scanlineSum / scanline.length;
+								}
+
+								private void processScanline() {
+									scanlineSum2 = 0;
+									scanlineDotSum = 0;
+									for(int i = 0; i < scanline.length; i++) {
+										int k = (scanline[i] < scanlineMean) ? 1 : 0;
+										scanlineDot[i] = k * i;
+										scanlineSum2 += k;
+										scanlineDotSum += scanlineDot[i];
+									}
+									scanlineCenter = (double)scanlineDotSum / (double)scanlineSum2;
+								}
 
 								long frameN = 0;
 
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
 
-									// TODO:
-									// 1. perform 8-bit Y-channel to 16-bit mono PCM conversion
-									// 2. invert, normalize & stretch pcm
-									// 3. centroid position and width detection
-									// 4. select frequency scale or proceedural instrument table
-									// a. probably not a not fourier basis like DCT-II/II transform pairs,
-									// b. try equal temperament chromatic scale: base_hz * (2 ** (1/12) ** note_n)
-									// 5. centroid position, width to frequency, amplitude conversion
-									// 6. freq to time domain composition and compress range
-									// 7. lag compensation
+									setScanline(data);
+									processScanline();
 
-									// pcmBuffer[i] = (short)(((int)data[frameOffset + i] & 0x00ff) + 128); // convert unsigned 8-bit to signed 16-bit
-									// pcmBuffer[i] = (short)(255 - pcmBuffer[i]); // invert levels
-									// pcmBuffer[i] <<= 8; // scale amplitude by 256, or a left-shift of 1 byte
-
-									note += 1.0;
+									note = 12.0 + (48.0 * scanlineCenter / (double)(scanlineN - 1.0));
 
 									frameN++;
 
 									long elapsedTime = System.currentTimeMillis() - startTime;
-
 									double secs = (double)elapsedTime / 1000.0;
 									double fps = (double)frameN / secs;
 
 									if(frameN % framesPerMessage == 1) {
-										textViewMessage.setText(String.format("PaperTracker - %.0f #%d %.1fs %.1ffps %.1fhz", note, frameN, secs, fps, fps * (double)frameWidth));
+										textViewMessage.setText(String.format("PaperTracker - %.1f %.1f #%d %.1fs %.1ffps", scanlineCenter, note, frameN, secs, fps));
 									}
+
+									camera.addCallbackBuffer(data);
 								}
 							});
 
