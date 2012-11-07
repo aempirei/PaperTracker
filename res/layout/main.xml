@@ -16,12 +16,6 @@
 	android:layout_height="wrap_content"
 	android:text="Play"
 	/>
-<Button
-	android:id="@+id/stopcamerapreview"
-	android:layout_width="fill_parent"
-	android:layout_height="wrap_content"
-	android:text="Pause"
-	/>
 <SurfaceView
 	android:id="@+id/surfaceview"
 	android:layout_width="fill_parent"

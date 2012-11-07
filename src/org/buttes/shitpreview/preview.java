@@ -31,7 +31,7 @@ class AudioPlayer {
 
 	AudioTrack audio;
 
-	final int sampleRate = 11025;
+	final int sampleRate = 22050;
 	final int sampleSize = 2; // in bytes
 	final int sampleChannelCfg = AudioFormat.CHANNEL_OUT_MONO;
 	final int sampleEncoding = (sampleSize == 1) ? AudioFormat.ENCODING_PCM_8BIT :
@@ -46,28 +46,21 @@ class AudioPlayer {
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
-      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, minBufferSize, AudioTrack.MODE_STREAM);
+      audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, 2 * minBufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
 	}
 
-	final double baseExponent = Math.pow(2.0, 1.0 / 12.0);
-	final double baseFrequency = 55.0;
+	final double baseFrequency = 110.0;
 
 	private double getNoteHz(double note) {
-		return baseFrequency * Math.pow(baseExponent, note);
+		return baseFrequency * Math.pow(2.0, note / 12.0);
 	}
-
-	final double noteStepEpsilon = 2.0 * Math.PI / (double)sampleRate;
 
 	private double getNoteStep(double note) {
-		return getNoteHz(note) * noteStepEpsilon;
+		return getNoteHz(note) * 2.0 * Math.PI / (double)sampleRate;
 	}
 
-	private short getNoteSample(long sampleN, double note, double volume) {
-		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(getNoteStep(note) * sampleN));
-	}
-
-	final double boundaryMax = 2.0 * Math.PI;
+	final double boundaryMax = 16.0 * Math.PI;
 
 	private void stepVoice(int voice, double note) {
 		voices[voice] += getNoteStep(note);
@@ -76,14 +69,10 @@ class AudioPlayer {
 	}
 	
 	private short getNoteSample(int voice, double note, double volume) {
-		return (short)Math.rint(volume * Short.MAX_VALUE * Math.sin(voices[voice]));
+		return (short)Math.rint(Short.MAX_VALUE * volume * Math.sin(voices[voice]));
 	}
 
 	public void setSampleBuffer(int voice, double note, double volume) {
-
-		if(voice < 0 || voice >= voicesN)
-			voice = 0;
-
 		for(int i = 0; i < sampleBuffer.length; i++) {
 			sampleBuffer[i] = getNoteSample(voice, note, volume);
 			stepVoice(voice, note);
@@ -91,10 +80,6 @@ class AudioPlayer {
 	}
 
 	public void addSampleBuffer(int voice, double note, double volume) {
-
-		if(voice < 0 || voice >= voicesN)
-			voice = 0;
-
 		for(int i = 0; i < sampleBuffer.length; i++) {
 			sampleBuffer[i] += getNoteSample(voice, note, volume);
 			stepVoice(voice, note);
@@ -112,9 +97,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	SurfaceView surfaceView;
 	SurfaceHolder surfaceHolder;
 
-	TextView textViewMessage;
-	Button buttonPlay;
-	Button buttonPause;
+	TextView textView;
+	Button button;
 
 	boolean previewing = false;
 
@@ -145,9 +129,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		// find widgets
 
-		textViewMessage = (TextView)findViewById(R.id.message);
-		buttonPlay = (Button)findViewById(R.id.startcamerapreview);
-		buttonPause = (Button)findViewById(R.id.stopcamerapreview);
+		textView = (TextView)findViewById(R.id.message);
+		button = (Button)findViewById(R.id.startcamerapreview);
 		surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
 
 		getWindow().setFormat(PixelFormat.YCbCr_420_SP);
@@ -160,7 +143,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 		// setup start camera button
 
-		buttonPlay.setOnClickListener(new Button.OnClickListener() {
+		button.setOnClickListener(new Button.OnClickListener() {
 
 			final int callbackBuffersN = 15;
 			double note = 1.0;
@@ -171,7 +154,17 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			@Override
 			public void onClick(View v) {
 
-				if(previewing == false) {
+				if(previewing) {
+
+					if(camera != null) {
+						camera.stopPreview();
+					}
+
+					previewing = false;
+
+					button.setText("Play");
+
+				} else {
 
 					//
 					//
@@ -180,6 +173,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					//
 
 					previewing = true;
+
+					button.setText("Pause");
 
 					final Handler handler = new Handler();
 					final AudioPlayer player = new AudioPlayer();
@@ -194,7 +189,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							// handler.post(new Runnable() {
 							// 	@Override	
 							// 	public void run() {
-							// 		textViewMessage.setText(String.format("PaperTracker - playback starting!\n"));									
+							// 		textView.setText(String.format("PaperTracker - playback starting!\n"));									
 							// 	}
 							// });
 
@@ -202,7 +197,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							int voice = 0;
 
 							while(previewing) {
-								player.setSampleBuffer(voice, note, loud);
+								player.setSampleBuffer(voice, Math.rint(note), loud);
 								player.write();
 							}
 
@@ -234,7 +229,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 								final Size previewSize = camera.getParameters().getPreviewSize();
 								final long startTime = System.currentTimeMillis();
-								final int framesPerMessage = 4;
+								final int framesPerMessage = 10;
 
 								final int scanlineOffset = previewSize.width * (previewSize.height >> 1);
 								final int scanlineN = previewSize.width;
@@ -276,7 +271,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									setScanline(data);
 									processScanline();
 
-									note = 12.0 + (48.0 * scanlineCenter / (double)(scanlineN - 1.0));
+									note = 36.0 * scanlineCenter / (double)(scanlineN - 1.0);
 
 									frameN++;
 
@@ -285,7 +280,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									double fps = (double)frameN / secs;
 
 									if(frameN % framesPerMessage == 1) {
-										textViewMessage.setText(String.format("PaperTracker - %.1f %.1f #%d %.1fs %.1ffps", scanlineCenter, note, frameN, secs, fps));
+										textView.setText(String.format("PaperTracker - %.1f %.1f #%d %.1fs %.1ffps", scanlineCenter, note, frameN, secs, fps));
 									}
 
 									camera.addCallbackBuffer(data);
@@ -299,36 +294,15 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							e.printStackTrace();
 						}
 
-						// end of if((camera = Camera.open())) { ... }
+						// end of if(camera != null) { ... }
 					}
 
-					// end of if(previewing == false) { ... } 
+					// end of if(previewing) { ... } 
 				}
 
 				// end of onClick()
 			} 
 		});
-
-		//
-		// setup stop camera button
-		//
-
-		buttonPause.setOnClickListener(new Button.OnClickListener() {
-
-			@Override
-			public void onClick(View v) {
-
-				if(previewing) {
-
-					if(camera != null) {
-						camera.stopPreview();
-					}
-
-					previewing = false;
-				}
-			}
-		});
-
 	}
 
 	@Override
