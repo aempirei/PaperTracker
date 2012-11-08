@@ -149,11 +149,14 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 			// these are all generally shared between the 3 threads
 
-			final int callbackBuffersN = 20;
-			final long startTime = System.currentTimeMillis();
+			final Handler handler = new Handler();
+			final AudioPlayer player = new AudioPlayer();
 
-			double note = 0.0;
-			long frameN = 0;
+			final int callbackBuffersN = 20;
+
+			long startTime;
+			long frameN;
+			double note;
 
 			double[] notes;
 			double[] volumes;
@@ -179,36 +182,27 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 				} else {
 
+					previewing = true;
+
+					button.setText("Pause");
+
 					//
 					//
 					// start up the audio player
 					//
 					//
 
-					previewing = true;
+					//
+					// reset the shared data
+					//
 
-					button.setText("Pause");
+					note = 0.0;
+					frameN = 0;
 
-					final Handler handler = new Handler();
-					final AudioPlayer player = new AudioPlayer();
+					startTime = System.currentTimeMillis();
 
 					notes = new double[player.voicesN];
 					volumes = new double[player.voicesN];
-					
-					new Thread(new Runnable() {
-						@Override
-						public void run() {
-
-							double loud = 1.0;
-							int voice = 0;
-
-							while(previewing) {
-								player.setSampleBuffer(voice, note, loud);
-								player.write();
-							}
-
-						}
-					}).start();
 
 					//
 					//
@@ -295,19 +289,22 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						new Thread(new Runnable() {
 							 @Override
 							public void run() {
+
+								Runnable runnableUpdateStatus = new Runnable() {
+									@Override	
+									public void run() {
+										long elapsedTime = System.currentTimeMillis() - startTime;
+										double secs = (double)elapsedTime / 1000.0;
+										double fps = (double)frameN / secs;
+										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
+										scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
+									}
+								};
+
 								while(previewing) {
 									try {
-										Thread.sleep(250);
-										handler.post(new Runnable() {
-											@Override	
-											public void run() {
-												long elapsedTime = System.currentTimeMillis() - startTime;
-												double secs = (double)elapsedTime / 1000.0;
-												double fps = (double)frameN / secs;
-												textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
-												scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
-											}
-										});
+										Thread.sleep(200);
+										handler.post(runnableUpdateStatus);
 									} catch(InterruptedException e) {
 										// who cares
 									}
@@ -315,6 +312,27 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							}
 						}).start();
 
+						//
+						// start up the audio player thread
+						//
+					
+						new Thread(new Runnable() {
+							@Override
+							public void run() {
+	
+								double loud = 1.0;
+								int voice = 0;
+	
+								// do the sounds!
+	
+								while(previewing) {
+									player.setSampleBuffer(voice, note, loud);
+									player.write();
+								}
+	
+							}
+						}).start();
+	
 						// end of if(camera != null) { ... }
 					}
 
