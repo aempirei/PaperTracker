@@ -40,10 +40,10 @@ class AudioPlayer {
 								AudioFormat.ENCODING_INVALID;
 
 	final int bufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding) * 2;
-	final int sampleBufferN = sampleRate / 25;
+	final int sampleBufferN = sampleRate / 45;
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 8;
+	final int voicesN = 5;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
@@ -51,7 +51,7 @@ class AudioPlayer {
 		audio.play();
 	}
 
-	final double baseFrequency = 110.0;
+	final double baseFrequency = 55.0;
 
 	public double getNoteHz(double note) {
 		return baseFrequency * Math.pow(2.0, note / 12.0);
@@ -66,12 +66,31 @@ class AudioPlayer {
 		voices[voice] -= Math.floor(voices[voice]);
 	}
 
+	private void stepVoices(double[] notes) {
+		for(int i = 0; i < notes.length; i++)
+			stepVoice(i, notes[i]);
+	}
+
 	private double wave(double x) {
 		return (x < 0.5) ? 1.0 : -1.0; 
 	}
 
 	private short getSample(int voice, double volume) {
 		return (short)(Short.MAX_VALUE * volume * wave(voices[voice]));
+	}
+
+	private short getPolySample(double[] volumes) {
+		double y = 1.0;
+		for(int i = 0; i < volumes.length; i++)
+			y *= volumes[i] * wave(voices[i]);
+		return (short)(Short.MAX_VALUE * y);
+	}
+
+	public void polySampleBuffer(double notes[], double[] volumes) {
+		for(int i = 0; i < sampleBuffer.length; i++) {
+			sampleBuffer[i] = getPolySample(volumes);
+			stepVoices(notes);
+		}
 	}
 
 	public void setSampleBuffer(int voice, double note, double volume) {
@@ -121,7 +140,7 @@ class ScanLine {
 
 	public void blur(int r) {
 		for(int i = r; i < N - r; i++) {
-			back[r] = 0;
+			back[i] = 0;
 			for(int j = -r; j <= r; j++)
 				back[i] += front[i + j];
 		}
@@ -150,6 +169,9 @@ class ScanLine {
 	double mass;
 	double population;
 	double centroid;
+	
+	double[] mus;
+	double[] sigmas;
 
 	public void discriminate() {
 		for(int i = 0; i < N; i++)
@@ -159,7 +181,7 @@ class ScanLine {
 
 	public void pdiscriminate() {
 		for(int i = 0; i < N; i++)
-			back[i] = (front[i] < rms - rmsd) ? 0 : 1;
+			back[i] = (front[i] < rms + rmsd) ? 0.0 : 1.0;
 		flip();
 	}
 
@@ -227,6 +249,17 @@ class ScanLine {
 		varN = sumX(scratch);
 		var = varN / N;
 		std = Math.sqrt(varN / N);
+	}
+
+	public void updatePoints() {
+		// perform range-scan
+			// (-inf,0.25( ... (0.75,inf)
+			// consecutive points in (0.75,inf) are considered a range 
+			// mu is the range midpoint
+			// sigma is the range width
+		// drop single-point ranges
+		// choose top 8 ranges
+		// update mus/sigmas
 	}
 }
 
@@ -331,9 +364,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 					startTime = System.currentTimeMillis();
 
-					notes = new double[player.voicesN];
-					volumes = new double[player.voicesN];
-
 					//
 					//
 					// start up the camera
@@ -369,14 +399,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
 
-									// setScanline(data);
-									// processScanline();
-
 									scanline.setFromNV21(data, scanlineOffset);
-
-									// scanline.blur(1);
-
-									// scanline.updateRMSD();
 
 									scanline.updateStdDev();
 
@@ -384,7 +407,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 									scanline.updateCenter();
 
-									note = 36.0 * scanline.centroid / (scanline.N - 1);
+									note = 42.0 * scanline.centroid / (scanline.N - 1);
 
 									frameN++;
 
@@ -415,15 +438,15 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 										long elapsedTime = System.currentTimeMillis() - startTime;
 										double secs = (double)elapsedTime / 1000.0;
 										double fps = (double)frameN / secs;
-										textView.setText(String.format("PaperTracker - p=%.1f/%.1f/%.1f µ=%.1f σ=%.1f %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
-											scanline.population,scanline.mass,(double)scanline.centroid, (double)scanline.mean, (double)scanline.std,
+										textView.setText(String.format("PaperTracker - p=%.1f µ=%.1f σ=%.1f %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
+											(double)scanline.centroid, (double)scanline.mean, (double)scanline.std,
 											note, player.getNoteHz(note), frameN, secs, fps));
 									}
 								};
 
 								while(previewing) {
 									try {
-										Thread.sleep(200);
+										Thread.sleep(250);
 										handler.post(runnableUpdateStatus);
 									} catch(InterruptedException e) {
 										// who cares
