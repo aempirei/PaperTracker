@@ -93,6 +93,143 @@ class AudioPlayer {
 	}
 }
 
+class ScanLine {
+
+	double[] front;
+	double[] back;
+	double[] scratch;
+
+	final int N;
+
+	public ScanLine(int myN) {
+		N = myN;
+		front = new double[N];
+		back = new double[N];
+		scratch = new double[N];
+	}
+
+	public void setFromNV21(byte[] data, int offset) {
+		for(int i = 0; i < N; i++)
+			front[i] = (double)(255 - (0xff & data[offset + i]));
+	}
+
+	private void flip() {
+		double[] temp = front;
+		front = back;
+		back = temp;
+	}
+
+	public void blur(int r) {
+		for(int i = r; i < N - r; i++) {
+			back[r] = 0;
+			for(int j = -r; j <= r; j++)
+				back[i] += front[i + j];
+		}
+		for(int i = 0; i < r; i++)
+			back[i] = back[r];
+		for(int i = 0; i < r; i++)
+			back[N - 1 - i] = back[N - 1 - r];
+		flip();
+	}
+
+	double rms;
+	double rmsd;
+	double rmsd2;
+	double rmsd2N;
+
+	double std;
+	double var;
+	double varN;
+
+	double mean;
+	double mean2;
+
+	double sum;
+	double sum2;
+
+	double mass;
+	double population;
+	double centroid;
+
+	public void discriminate() {
+		for(int i = 0; i < N; i++)
+			back[i] = (front[i] < mean + 2.0 * std) ? 0.0 : 1.0;
+		flip();
+	}
+
+	public void pdiscriminate() {
+		for(int i = 0; i < N; i++)
+			back[i] = (front[i] < rms - rmsd) ? 0 : 1;
+		flip();
+	}
+
+	private double rampX(double[] xs) {
+		double y = 0;
+		for(int i = 0; i < xs.length; i++)
+			y += i * xs[i];
+		return y;
+	}
+
+	private double sumX(double[] xs) {
+		double y = 0;
+		for(int i = 0; i < xs.length; i++)
+			y += xs[i];
+		return y;
+	}
+
+	private void centerX(double[] ys, double[] xs, double mu) {
+		for(int i = 0; i < xs.length; i++)
+			ys[i] = xs[i] - mu;
+	}
+
+	private void squareX(double[] ys, double[] xs) {
+		for(int i = 0; i < xs.length; i++)
+			ys[i] = xs[i] * xs[i];
+	}
+
+	public void updateCenter() {
+		population = sumX(front);
+		mass = rampX(front);
+		centroid = mass / (population + 1);
+	}
+
+
+	public void updateRMS() {
+		squareX(scratch, front);
+		sum2 = sumX(scratch);
+		mean2 = sum2 / N;
+		rms = Math.sqrt(sum2 / N);
+	}
+
+	public void updateRMSD() {
+
+		updateRMS();
+
+		centerX(back, front, rms);
+		squareX(scratch, back);
+		rmsd2N = sumX(scratch);
+		rmsd2 = rmsd2N / N;
+		rmsd = Math.sqrt(rmsd2N / N);
+	}
+
+
+	public void updateMean() {
+		sum = sumX(front);
+		mean = sum / N;
+	}
+
+	public void updateStdDev() {
+
+		updateMean();
+
+		centerX(back, front, mean);
+		squareX(scratch, back);
+		varN = sumX(scratch);
+		var = varN / N;
+		std = Math.sqrt(varN / N);
+	}
+}
+
 public class preview extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
 {
 	Camera camera;
@@ -103,7 +240,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	Button button;
 
 	boolean previewing = false;
-
 
 	/*
 	 * get frame size of a preview image (assuming NV21 format)
@@ -161,11 +297,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			double[] notes;
 			double[] volumes;
 
-			// hmm... stats on the data gets shared
+			int scanlineOffset;
 
-			double scanlineMean;
-			double scanlineDev;
-			double scanlineCenter;
+			ScanLine scanline;
+
+			Camera.Size previewSize;
 
 			@Override
 			public void onClick(View v) {
@@ -215,51 +351,40 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 							camera.setPreviewDisplay(surfaceHolder);
 							camera.setDisplayOrientation(0);
 
-							for(int i = 0; i < callbackBuffersN; i++) {
+							//
+							// fill out camera data -- probably should make a class
+							// 
+
+							for(int i = 0; i < callbackBuffersN; i++)
 								camera.addCallbackBuffer(new byte[getFrameSize()]);
-							}
+
+							previewSize = camera.getParameters().getPreviewSize();
+
+							scanlineOffset = previewSize.width * (previewSize.height >> 1);
+
+							scanline = new ScanLine(previewSize.width);
 
 							camera.setPreviewCallbackWithBuffer(new PreviewCallback() {
-
-								final Size previewSize = camera.getParameters().getPreviewSize();
-
-								final int scanlineOffset = previewSize.width * (previewSize.height >> 1);
-								final int scanlineN = previewSize.width;
-
-								int[] scanline = new int[scanlineN];
-
-								private void setScanline(byte[] data) {
-									scanlineMean = 0;
-									for(int i = 0; i < scanline.length; i++) {
-										scanline[i] = (int)(0xff & data[scanlineOffset + i]);
-										scanlineMean += (double)scanline[i];
-									}
-									scanlineMean /= (double)scanline.length;
-									scanlineDev = 0;
-									for(int i = 0; i < scanline.length; i++) {
-										scanlineDev += Math.pow((double)scanline[i] - scanlineMean, 2.0);
-									}
-									scanlineDev = Math.sqrt(scanlineDev / (double)scanline.length);
-								}
-
-								private void processScanline() {
-									int scanlinePop = 1;
-									int scanlineMass = 0;
-									for(int i = 0; i < scanline.length; i++) {
-										int k = (scanline[i] < scanlineMean - 2.0 * scanlineDev) ? 1 : 0;
-										scanlinePop += k;
-										scanlineMass += k * i;
-									}
-									scanlineCenter = (double)scanlineMass / (double)scanlinePop;
-								}
 
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
 
-									setScanline(data);
-									processScanline();
+									// setScanline(data);
+									// processScanline();
 
-									note = 36.0 * scanlineCenter / (double)(scanlineN - 1.0);
+									scanline.setFromNV21(data, scanlineOffset);
+
+									// scanline.blur(1);
+
+									// scanline.updateRMSD();
+
+									scanline.updateStdDev();
+
+									scanline.discriminate();
+
+									scanline.updateCenter();
+
+									note = 36.0 * scanline.centroid / (scanline.N - 1);
 
 									frameN++;
 
@@ -290,8 +415,9 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 										long elapsedTime = System.currentTimeMillis() - startTime;
 										double secs = (double)elapsedTime / 1000.0;
 										double fps = (double)frameN / secs;
-										textView.setText(String.format("PaperTracker - %.1f  µ=%.1f σ=%.1f  %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
-										scanlineCenter, scanlineMean, scanlineDev, note, player.getNoteHz(note), frameN, secs, fps));
+										textView.setText(String.format("PaperTracker - p=%.1f/%.1f/%.1f µ=%.1f σ=%.1f %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
+											scanline.population,scanline.mass,(double)scanline.centroid, (double)scanline.mean, (double)scanline.std,
+											note, player.getNoteHz(note), frameN, secs, fps));
 									}
 								};
 
