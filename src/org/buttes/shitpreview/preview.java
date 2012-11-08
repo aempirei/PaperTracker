@@ -1,6 +1,8 @@
 package org.buttes.shitpreview;
 import java.io.IOException;
-import java.util.List;
+import java.util.LinkedList;
+import java.util.TreeSet;
+import java.util.Iterator;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.lang.Math;
 import java.lang.Thread;
@@ -112,6 +114,28 @@ class AudioPlayer {
 	}
 }
 
+class Range implements Comparable<Range> {
+
+	public double a;
+	public double b;
+
+	public Range(double _a, double _b) {
+		a = _a;
+		b = _b;
+	}
+	public double mu() {
+		return (a + b) / 2.0;
+	}
+	public double sigma() {
+		return b - a;
+	}
+	@Override
+	public int compareTo(Range o) {
+		return (mu() > o.mu()) ? 1 : (mu() < o.mu()) ? -1 : 0;
+	}
+}
+
+
 class ScanLine {
 
 	double[] front;
@@ -120,8 +144,8 @@ class ScanLine {
 
 	final int N;
 
-	public ScanLine(int myN) {
-		N = myN;
+	public ScanLine(int _N) {
+		N = _N;
 		front = new double[N];
 		back = new double[N];
 		scratch = new double[N];
@@ -169,9 +193,8 @@ class ScanLine {
 	double mass;
 	double population;
 	double centroid;
-	
-	double[] mus;
-	double[] sigmas;
+
+	TreeSet<Range> ranges;
 
 	public void discriminate() {
 		for(int i = 0; i < N; i++)
@@ -194,8 +217,8 @@ class ScanLine {
 
 	private double sumX(double[] xs) {
 		double y = 0;
-		for(int i = 0; i < xs.length; i++)
-			y += xs[i];
+		for(double x : xs)
+			y += x;
 		return y;
 	}
 
@@ -251,15 +274,27 @@ class ScanLine {
 		std = Math.sqrt(varN / N);
 	}
 
-	public void updatePoints() {
-		// perform range-scan
-			// (-inf,0.25( ... (0.75,inf)
-			// consecutive points in (0.75,inf) are considered a range 
-			// mu is the range midpoint
-			// sigma is the range width
-		// drop single-point ranges
-		// choose top 8 ranges
-		// update mus/sigmas
+	public void updateRanges(int maxRanges, double smallestRangeSigma) {
+
+		ranges = new TreeSet<Range>();
+
+		for(int i = 0; i < N - 1; i++) {
+			if(front[i] > 0.9) {
+				for(int j = i + 1; j < N; j++) {
+					if(front[j] < 0.1) {
+						ranges.add(new Range(i,j-1));
+						i = j - 1;
+						break;
+					}
+				}
+			}
+		}
+
+		while(ranges.size() > maxRanges)
+			ranges.remove(ranges.first());
+
+		while(ranges.size() > 0 && ranges.first().sigma() < smallestRangeSigma)
+			ranges.remove(ranges.first());
 	}
 }
 
@@ -274,9 +309,9 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 	boolean previewing = false;
 
-	/*
-	 * get frame size of a preview image (assuming NV21 format)
-	 */
+	//
+	// get frame size of a preview image (assuming NV21 format)
+	//
 
 	private int frameSize;
 
@@ -322,10 +357,23 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			final AudioPlayer player = new AudioPlayer();
 
 			final int callbackBuffersN = 20;
+			final double minRangeSigma = 2.0;
 
 			long startTime;
 			long frameN;
+
 			double note;
+			double volume;
+
+			final double noteMax = 36.0;
+
+			private double rangeToNote(Range range, double muMax) {
+				return noteMax * range.mu() / muMax;
+			}
+
+			private double rangeToVolume(Range range) {
+				return Math.min(1.0, 0.70 + range.sigma() / 100.0);
+			}
 
 			double[] notes;
 			double[] volumes;
@@ -335,6 +383,10 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			ScanLine scanline;
 
 			Camera.Size previewSize;
+
+			// testy stuff
+
+			int rangeN;
 
 			@Override
 			public void onClick(View v) {
@@ -360,6 +412,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					//
 
 					note = 0.0;
+					volume = 0.0;
 					frameN = 0;
 
 					startTime = System.currentTimeMillis();
@@ -401,13 +454,32 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 									scanline.setFromNV21(data, scanlineOffset);
 
+									scanline.blur(1);
+
 									scanline.updateStdDev();
 
 									scanline.discriminate();
 
-									scanline.updateCenter();
+									scanline.updateRanges(player.voicesN, minRangeSigma);
 
-									note = 42.0 * scanline.centroid / (scanline.N - 1);
+									// scanline.updateCenter();
+
+									rangeN = scanline.ranges.size();
+									if(rangeN > 0) {
+
+										Range[] ranges = scanline.ranges.toArray(new Range[0]);
+
+										notes = new double[ranges.length];
+										volumes = new double[ranges.length];
+
+										for(int i = 0; i < ranges.length; i++) {
+											notes[i] = rangeToNote(ranges[i], scanline.N);
+											volumes[i] = rangeToVolume(ranges[i]);
+										}
+
+										note = notes[0];
+										volume = volumes[0];
+									}
 
 									frameN++;
 
@@ -428,54 +500,58 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						//
 						//
 						
-						new Thread(new Runnable() {
+						Thread thStatus = new Thread(new Runnable() {
 							 @Override
 							public void run() {
-
+								
 								Runnable runnableUpdateStatus = new Runnable() {
 									@Override	
 									public void run() {
 										long elapsedTime = System.currentTimeMillis() - startTime;
 										double secs = (double)elapsedTime / 1000.0;
 										double fps = (double)frameN / secs;
-										textView.setText(String.format("PaperTracker - p=%.1f µ=%.1f σ=%.1f %.1f  %.1fhz  #%d  %.1fs   %.1ffps",
-											(double)scanline.centroid, (double)scanline.mean, (double)scanline.std,
+										textView.setText(String.format("PaperTracker - r=%d v=%.1f µ=%.1f σ=%.1f %.1f %.1fhz #%d %.1fs %.1ffps",
+											rangeN,  volume, (double)scanline.mean, (double)scanline.std,
 											note, player.getNoteHz(note), frameN, secs, fps));
 									}
 								};
 
 								while(previewing) {
 									try {
-										Thread.sleep(250);
+										Thread.sleep(125);
 										handler.post(runnableUpdateStatus);
 									} catch(InterruptedException e) {
 										// who cares
 									}
 								}
 							}
-						}).start();
+						});
+
+						thStatus.setPriority(Thread.MIN_PRIORITY);
+						thStatus.start();
 
 						//
 						// start up the audio player thread
 						//
 					
-						new Thread(new Runnable() {
+						Thread thAudio = new Thread(new Runnable() {
 							@Override
 							public void run() {
 	
-								double loud = 1.0;
 								int voice = 0;
 	
 								// do the sounds!
 	
 								while(previewing) {
-									player.setSampleBuffer(voice, note, loud);
+									player.setSampleBuffer(voice, note, volume);
 									player.write();
 								}
 	
 							}
-						}).start();
-	
+						});
+						
+						thAudio.start();
+
 						// end of if(camera != null) { ... }
 					}
 
