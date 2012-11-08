@@ -274,7 +274,7 @@ class ScanLine {
 	}
 }
 
-public class preview extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
+public class PaperTracker extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback
 {
 	Camera camera;
 	SurfaceView surfaceView;

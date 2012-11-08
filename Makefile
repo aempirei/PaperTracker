@@ -1,4 +1,4 @@
-PROGRAMS = ./bin/preview-debug.apk
+PROGRAMS = ./bin/PaperTracker-debug.apk
 TARGET_DIR = ~/public_html/
 
 .PHONY: build clean
@@ -9,6 +9,6 @@ build: $(PROGRAMS)
 clean:
 	ant clean
 
-./bin/preview-debug.apk: ./src/org/buttes/shitpreview/preview.java
+./bin/PaperTracker-debug.apk: ./src/org/buttes/shitpreview/PaperTracker.java
 	ant clean
 	ant debug
