@@ -194,7 +194,7 @@ class ScanLine {
 	double population;
 	double centroid;
 
-	TreeSet<Range> ranges;
+	Range[] ranges;
 
 	public void discriminate() {
 		for(int i = 0; i < N; i++)
@@ -276,13 +276,13 @@ class ScanLine {
 
 	public void updateRanges(int maxRanges, double smallestRangeSigma) {
 
-		ranges = new TreeSet<Range>();
+		TreeSet<Range> rangeTreeSet = new TreeSet<Range>();
 
 		for(int i = 0; i < N - 1; i++) {
 			if(front[i] > 0.9) {
 				for(int j = i + 1; j < N; j++) {
 					if(front[j] < 0.1) {
-						ranges.add(new Range(i,j-1));
+						rangeTreeSet.add(new Range(i,j-1));
 						i = j - 1;
 						break;
 					}
@@ -290,11 +290,13 @@ class ScanLine {
 			}
 		}
 
-		while(ranges.size() > maxRanges)
-			ranges.remove(ranges.first());
+		while(rangeTreeSet.size() > maxRanges)
+			rangeTreeSet.remove(rangeTreeSet.first());
 
-		while(ranges.size() > 0 && ranges.first().sigma() < smallestRangeSigma)
-			ranges.remove(ranges.first());
+		while(rangeTreeSet.size() > 0 && rangeTreeSet.first().sigma() < smallestRangeSigma)
+			rangeTreeSet.remove(rangeTreeSet.first());
+
+		ranges = rangeTreeSet.toArray(new Range[0]);
 	}
 }
 
@@ -452,29 +454,28 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								@Override
 								public void onPreviewFrame(byte[] data, Camera camera) {
 
+									// calculations
+
 									scanline.setFromNV21(data, scanlineOffset);
 
+									camera.addCallbackBuffer(data);
+
 									scanline.blur(1);
-
 									scanline.updateStdDev();
-
 									scanline.discriminate();
-
 									scanline.updateRanges(player.voicesN, minRangeSigma);
 
-									// scanline.updateCenter();
+									// note+volume assignment
 
-									rangeN = scanline.ranges.size();
+									rangeN = scanline.ranges.length;
 									if(rangeN > 0) {
 
-										Range[] ranges = scanline.ranges.toArray(new Range[0]);
+										notes = new double[rangeN];
+										volumes = new double[rangeN];
 
-										notes = new double[ranges.length];
-										volumes = new double[ranges.length];
-
-										for(int i = 0; i < ranges.length; i++) {
-											notes[i] = rangeToNote(ranges[i], scanline.N);
-											volumes[i] = rangeToVolume(ranges[i]);
+										for(int i = 0; i < rangeN; i++) {
+											notes[i] = rangeToNote(scanline.ranges[i], scanline.N);
+											volumes[i] = rangeToVolume(scanline.ranges[i]);
 										}
 
 										note = notes[0];
@@ -482,8 +483,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									}
 
 									frameN++;
-
-									camera.addCallbackBuffer(data);
 								}
 							});
 
