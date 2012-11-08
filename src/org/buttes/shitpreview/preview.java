@@ -1,8 +1,7 @@
 package org.buttes.shitpreview;
 import java.io.IOException;
-import java.util.LinkedList;
+import java.util.List;
 import java.util.TreeSet;
-import java.util.Iterator;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.lang.Math;
 import java.lang.Thread;
@@ -82,10 +81,17 @@ class AudioPlayer {
 	}
 
 	private short getPolySample(double[] volumes) {
-		double y = 1.0;
+		if(volumes.length == 0)
+			return 0;
+		double y = 0.0;
 		for(int i = 0; i < volumes.length; i++)
-			y *= volumes[i] * wave(voices[i]);
-		return (short)(Short.MAX_VALUE * y);
+			y += volumes[i] * wave(voices[i]);
+		return (short)(Short.MAX_VALUE * y / volumes.length);
+	}
+
+	public void clearSampleBuffer() {
+		for(int i = 0; i < sampleBuffer.length; i++)
+			sampleBuffer[i] = 0;
 	}
 
 	public void polySampleBuffer(double notes[], double[] volumes) {
@@ -198,7 +204,7 @@ class ScanLine {
 
 	public void discriminate() {
 		for(int i = 0; i < N; i++)
-			back[i] = (front[i] < mean + 2.0 * std) ? 0.0 : 1.0;
+			back[i] = (front[i] < mean + 1.5 * std) ? 0.0 : 1.0;
 		flip();
 	}
 
@@ -309,6 +315,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 	TextView textView;
 	Button button;
 
+	ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
 	boolean previewing = false;
 
 	//
@@ -364,9 +372,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			long startTime;
 			long frameN;
 
-			double note;
-			double volume;
-
 			final double noteMax = 36.0;
 
 			private double rangeToNote(Range range, double muMax) {
@@ -413,9 +418,14 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					// reset the shared data
 					//
 
-					note = 0.0;
-					volume = 0.0;
-					frameN = 0;
+					lock.writeLock().lock();
+					try {
+						notes = new double[0];
+						volumes = new double[0];
+						frameN = 0;
+					} finally {
+						lock.writeLock().unlock();
+					}
 
 					startTime = System.currentTimeMillis();
 
@@ -425,9 +435,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					//
 					//
 
-					if(camera == null) {
+					if(camera == null)
 						camera = Camera.open();
-					}
 
 					if(camera != null) {
 
@@ -435,10 +444,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 							camera.setPreviewDisplay(surfaceHolder);
 							camera.setDisplayOrientation(0);
-
-							//
-							// fill out camera data -- probably should make a class
-							// 
 
 							for(int i = 0; i < callbackBuffersN; i++)
 								camera.addCallbackBuffer(new byte[getFrameSize()]);
@@ -467,9 +472,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 									// note+volume assignment
 
-									rangeN = scanline.ranges.length;
-									if(rangeN > 0) {
+									lock.writeLock().lock();
 
+									try {
+
+										rangeN = scanline.ranges.length;
 										notes = new double[rangeN];
 										volumes = new double[rangeN];
 
@@ -478,11 +485,11 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 											volumes[i] = rangeToVolume(scanline.ranges[i]);
 										}
 
-										note = notes[0];
-										volume = volumes[0];
-									}
+										frameN++;
 
-									frameN++;
+									} finally {
+										lock.writeLock().unlock();
+									}
 								}
 							});
 
@@ -506,12 +513,16 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								Runnable runnableUpdateStatus = new Runnable() {
 									@Override	
 									public void run() {
-										long elapsedTime = System.currentTimeMillis() - startTime;
-										double secs = (double)elapsedTime / 1000.0;
-										double fps = (double)frameN / secs;
-										textView.setText(String.format("PaperTracker - r=%d v=%.1f µ=%.1f σ=%.1f %.1f %.1fhz #%d %.1fs %.1ffps",
-											rangeN,  volume, (double)scanline.mean, (double)scanline.std,
-											note, player.getNoteHz(note), frameN, secs, fps));
+										lock.readLock().lock();
+										try {
+											long elapsedTime = System.currentTimeMillis() - startTime;
+											double secs = (double)elapsedTime / 1000.0;
+											double fps = (double)frameN / secs;
+											textView.setText(String.format("PaperTracker - %d %s µ=%.1f σ=%.1f #%d %.1fs %.1ffps",
+												rangeN, rangeN == 1 ? "voice" : "voices", scanline.mean, scanline.std, frameN, secs, fps));
+										} finally {
+											lock.readLock().unlock();
+										}
 									}
 								};
 
@@ -536,13 +547,23 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 						Thread thAudio = new Thread(new Runnable() {
 							@Override
 							public void run() {
-	
-								int voice = 0;
-	
-								// do the sounds!
-	
+
+								double[] _notes;
+								double[] _volumes;
+
 								while(previewing) {
-									player.setSampleBuffer(voice, note, volume);
+
+									lock.readLock().lock();
+
+									try {
+										_notes = notes;
+										_volumes = volumes;
+									} finally {
+										lock.readLock().unlock();
+									}
+	
+									player.polySampleBuffer(_notes, _volumes);
+
 									player.write();
 								}
 	

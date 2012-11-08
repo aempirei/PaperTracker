@@ -15,6 +15,8 @@
     </application>
     <!-- uses-sdk android:targetSdkVersion="8" -->
     <uses-sdk android:minSdkVersion="8" />
+	 <uses-feature android:name="android.hardware.audio.low_latency" />
 	 <uses-feature android:name="android.hardware.camera" />
+	 <uses-feature android:name="android.hardware.camera.autofocus" />
     <uses-permission android:name="android.permission.CAMERA" />
 </manifest> 
