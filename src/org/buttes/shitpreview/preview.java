@@ -41,10 +41,10 @@ class AudioPlayer {
 								AudioFormat.ENCODING_INVALID;
 
 	final int bufferSize = AudioTrack.getMinBufferSize(sampleRate, sampleChannelCfg, sampleEncoding) * 2;
-	final int sampleBufferN = sampleRate / 45;
+	final int sampleBufferN = Math.min(sampleRate / 225, bufferSize / sampleSize);
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 5;
+	final int voicesN = 4;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
@@ -81,12 +81,10 @@ class AudioPlayer {
 	}
 
 	private short getPolySample(double[] volumes) {
-		if(volumes.length == 0)
-			return 0;
 		double y = 0.0;
 		for(int i = 0; i < volumes.length; i++)
 			y += volumes[i] * wave(voices[i]);
-		return (short)(Short.MAX_VALUE * y / volumes.length);
+		return (short)(Short.MAX_VALUE * y / voicesN);
 	}
 
 	public void clearSampleBuffer() {
@@ -168,19 +166,6 @@ class ScanLine {
 		back = temp;
 	}
 
-	public void blur(int r) {
-		for(int i = r; i < N - r; i++) {
-			back[i] = 0;
-			for(int j = -r; j <= r; j++)
-				back[i] += front[i + j];
-		}
-		for(int i = 0; i < r; i++)
-			back[i] = back[r];
-		for(int i = 0; i < r; i++)
-			back[N - 1 - i] = back[N - 1 - r];
-		flip();
-	}
-
 	double rms;
 	double rmsd;
 	double rmsd2;
@@ -196,21 +181,11 @@ class ScanLine {
 	double sum;
 	double sum2;
 
-	double mass;
-	double population;
-	double centroid;
-
 	Range[] ranges;
 
 	public void discriminate() {
 		for(int i = 0; i < N; i++)
-			back[i] = (front[i] < mean + 1.5 * std) ? 0.0 : 1.0;
-		flip();
-	}
-
-	public void pdiscriminate() {
-		for(int i = 0; i < N; i++)
-			back[i] = (front[i] < rms + rmsd) ? 0.0 : 1.0;
+			back[i] = (front[i] < mean + 2.0 * std) ? 0.0 : 1.0;
 		flip();
 	}
 
@@ -237,13 +212,6 @@ class ScanLine {
 		for(int i = 0; i < xs.length; i++)
 			ys[i] = xs[i] * xs[i];
 	}
-
-	public void updateCenter() {
-		population = sumX(front);
-		mass = rampX(front);
-		centroid = mass / (population + 1);
-	}
-
 
 	public void updateRMS() {
 		squareX(scratch, front);
@@ -277,7 +245,7 @@ class ScanLine {
 		squareX(scratch, back);
 		varN = sumX(scratch);
 		var = varN / N;
-		std = Math.sqrt(varN / N);
+		std = Math.sqrt(varN / (N-1));
 	}
 
 	public void updateRanges(int maxRanges, double smallestRangeSigma) {
@@ -285,9 +253,9 @@ class ScanLine {
 		TreeSet<Range> rangeTreeSet = new TreeSet<Range>();
 
 		for(int i = 0; i < N - 1; i++) {
-			if(front[i] > 0.9) {
+			if(front[i] > 0.95) {
 				for(int j = i + 1; j < N; j++) {
-					if(front[j] < 0.1) {
+					if(front[j] < 0.05) {
 						rangeTreeSet.add(new Range(i,j-1));
 						i = j - 1;
 						break;
@@ -349,7 +317,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 		button = (Button)findViewById(R.id.startcamerapreview);
 		surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
 
-		getWindow().setFormat(PixelFormat.YCbCr_420_SP);
+		// getWindow().setFormat(PixelFormat.YCbCr_420_SP);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
 		surfaceHolder = surfaceView.getHolder();
@@ -366,8 +334,8 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			final Handler handler = new Handler();
 			final AudioPlayer player = new AudioPlayer();
 
-			final int callbackBuffersN = 20;
-			final double minRangeSigma = 2.0;
+			final int callbackBuffersN = 15;
+			final double minRangeSigma = 2;
 
 			long startTime;
 			long frameN;
@@ -379,7 +347,7 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 			}
 
 			private double rangeToVolume(Range range) {
-				return Math.min(1.0, 0.70 + range.sigma() / 100.0);
+				return Math.min(1.0, 0.90 + range.sigma() / 100.0);
 			}
 
 			double[] notes;
@@ -465,7 +433,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 
 									camera.addCallbackBuffer(data);
 
-									scanline.blur(1);
 									scanline.updateStdDev();
 									scanline.discriminate();
 									scanline.updateRanges(player.voicesN, minRangeSigma);
@@ -513,22 +480,17 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 								Runnable runnableUpdateStatus = new Runnable() {
 									@Override	
 									public void run() {
-										lock.readLock().lock();
-										try {
-											long elapsedTime = System.currentTimeMillis() - startTime;
-											double secs = (double)elapsedTime / 1000.0;
-											double fps = (double)frameN / secs;
-											textView.setText(String.format("PaperTracker - %d %s µ=%.1f σ=%.1f #%d %.1fs %.1ffps",
-												rangeN, rangeN == 1 ? "voice" : "voices", scanline.mean, scanline.std, frameN, secs, fps));
-										} finally {
-											lock.readLock().unlock();
-										}
+										long elapsedTime = System.currentTimeMillis() - startTime;
+										double secs = (double)elapsedTime / 1000.0;
+										double fps = (double)frameN / secs;
+										textView.setText(String.format("PaperTracker - %d %s µ=%.1f σ=%.1f #%d %.1fs %.1ffps",
+											rangeN, rangeN == 1 ? "voice" : "voices", scanline.mean, scanline.std, frameN, secs, fps));
 									}
 								};
 
 								while(previewing) {
 									try {
-										Thread.sleep(125);
+										Thread.sleep(250);
 										handler.post(runnableUpdateStatus);
 									} catch(InterruptedException e) {
 										// who cares
@@ -561,15 +523,15 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 									} finally {
 										lock.readLock().unlock();
 									}
-	
-									player.polySampleBuffer(_notes, _volumes);
 
+									player.polySampleBuffer(_notes, _volumes);
 									player.write();
 								}
 	
 							}
 						});
 						
+						thAudio.setPriority(Thread.MAX_PRIORITY);
 						thAudio.start();
 
 						// end of if(camera != null) { ... }
