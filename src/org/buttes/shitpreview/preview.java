@@ -187,12 +187,6 @@ public class preview extends Activity implements SurfaceHolder.Callback, Camera.
 					button.setText("Pause");
 
 					//
-					//
-					// start up the audio player
-					//
-					//
-
-					//
 					// reset the shared data
 					//
 
