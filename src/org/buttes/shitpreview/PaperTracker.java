@@ -28,6 +28,10 @@ import android.media.AudioTrack.*;
 import android.media.AudioFormat;
 import android.media.AudioFormat.*;
 import android.media.AudioManager;
+import android.graphics.Paint;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.view.ViewGroup.LayoutParams;
 
 class AudioPlayer {
 
@@ -280,6 +284,7 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 	SurfaceView surfaceView;
 	SurfaceHolder surfaceHolder;
 
+
 	TextView textView;
 	Button button;
 
@@ -317,6 +322,8 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 		button = (Button)findViewById(R.id.startcamerapreview);
 		surfaceView = (SurfaceView)findViewById(R.id.surfaceview);
 
+		DrawScanner scanner = new DrawScanner(this);
+		addContentView(scanner, new LayoutParams (LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
 		// getWindow().setFormat(PixelFormat.YCbCr_420_SP);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -560,6 +567,26 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 	@Override
 	public void onPreviewFrame(byte[] data, Camera camera) {
 	}
+}
+
+class DrawScanner extends View {
+
+	public DrawScanner(Context context) {
+		super(context);
+
+	}
+
+	@Override
+	protected void onDraw(Canvas canvas) {
+		Paint paint = new Paint();
+		paint.setStyle(Paint.Style.FILL);
+		paint.setColor(Color.RED);
+		//canvas.drawText("TEST",canvas.getWidth()/2,canvas.getHeight()/2,paint);
+		canvas.drawLine(0, canvas.getHeight()/2, canvas.getWidth(), canvas.getHeight()/2, paint);
+
+		super.onDraw(canvas);
+	}
+
 }
 
 /* 

@@ -1,0 +1,24 @@
+/home/hex/Shitpreview/bin/classes.dex : \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker$1$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/R$id.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/R$string.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker$1$2.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview$2.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/R.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker$1$3.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/ScanLine.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker$1$2$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/BuildConfig.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/R$attr.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview$1$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/PaperTracker.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/R$layout.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/AudioPlayer.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/DrawScanner.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview$1$1$1.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/Range.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/preview$1$2.class \
+/home/hex/android-sdks/tools/support/annotations.jar \
