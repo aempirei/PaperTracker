@@ -1,7 +1,4 @@
 /home/hex/Shitpreview/bin/classes.dex : \
-/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/ScanLine.class \
-/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/AudioPlayer.class \
-/home/hex/Shitpreview/bin/classes/org/buttes/shitpreview/Range.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/PaperTracker$1$1.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/R$id.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/R$string.class \
@@ -16,6 +13,7 @@
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/PaperTracker.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/R$layout.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/AudioPlayer.class \
+/home/hex/Shitpreview/bin/classes/org/buttes/papertracker/R$drawable.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/DrawScanner.class \
 /home/hex/Shitpreview/bin/classes/org/buttes/papertracker/Range.class \
 /home/hex/android-sdks/tools/support/annotations.jar \
