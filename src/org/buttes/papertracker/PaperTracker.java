@@ -48,7 +48,7 @@ class AudioPlayer {
 	final int sampleBufferN = Math.min(sampleRate / 225, bufferSize / sampleSize);
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 4;
+	final int voicesN = 5;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
@@ -56,7 +56,7 @@ class AudioPlayer {
 		audio.play();
 	}
 
-	final double baseFrequency = 55.0;
+	final double baseFrequency = 110.0;
 
 	public double getNoteHz(double note) {
 		return baseFrequency * Math.pow(2.0, note / 12.0);
@@ -341,16 +341,16 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 			final Handler handler = new Handler();
 			final AudioPlayer player = new AudioPlayer();
 
-			final int callbackBuffersN = 15;
+			final int callbackBuffersN = 20;
 			final double minRangeSigma = 2;
 
 			long startTime;
 			long frameN;
 
-			final double noteMax = 36.0;
+			final double noteMax = 30.0;
 
 			private double rangeToNote(Range range, double muMax) {
-				return noteMax * range.mu() / muMax;
+				return Math.rint(noteMax * range.mu() / muMax);
 			}
 
 			private double rangeToVolume(Range range) {
