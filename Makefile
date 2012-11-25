@@ -9,6 +9,6 @@ build: $(PROGRAMS)
 clean:
 	ant clean
 
-./bin/PaperTracker-debug.apk: ./src/org/buttes/shitpreview/PaperTracker.java
+./bin/PaperTracker-debug.apk: ./src/org/buttes/papertracker/PaperTracker.java
 	ant clean
 	ant debug
