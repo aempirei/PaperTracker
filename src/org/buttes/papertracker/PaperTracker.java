@@ -48,30 +48,62 @@ class AudioPlayer {
 	final int sampleBufferN = Math.min(sampleRate / 225, bufferSize / sampleSize);
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 5;
+	final int voicesN = 4;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
+
+		final double scale[] = dmajor;
+		final int noteHzTableSz = 96;
+
+		initializeNoteHzTable(dmajor, noteHzTableSz);
+
       audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
 	}
 
-	final double baseFrequency = 110.0;
+	//            0  1  2  3  4  5  6  7  8  9  10 11
+	// chromatic: C. C# D. D# E. F. F# G. G# A. A# B.
+   //            0  -- 2  -- 4  5  -- 7  -- 9  10 --
+	// d-minor:   C. -- D. -- E. F. -- G. -- A. Bb --
+	// d-major:   -- C# D. -- E. -- F# G. -- A. -- B.
 
-	public double getNoteHz(double note) {
-		return baseFrequency * Math.pow(2.0, note / 12.0);
+	private double dminor[] = { 0, 2, 4, 5, 7, 9, 10 };
+	private double dmajor[] = { 1, 2, 4, 6, 7, 9, 11 };
+
+	private double noteHzTable[];
+
+	private void initializeNoteHzTable(double scale[], int noteHzTableSz) {
+		noteHzTable = new double[noteHzTableSz];
+		for(int i = 0; i < noteHzTable.length; i++)
+			noteHzTable[i] = calcNoteHzTable(scale, i);
 	}
 
-	private double getNoteStep(double note) {
-		return getNoteHz(note) / (double)sampleRate;
+	public double calcNoteHzTable(double scale[], int note) {
+		final double baseFrequency = 65.4064; // C2
+		int q = note / scale.length;
+		int r = note % scale.length;
+		double exponent = q + (scale[r] / 12.0);
+		return baseFrequency * Math.pow(2.0, exponent);
 	}
 
-	private void stepVoice(int voice, double note) {
+	public double noteHz(int note) {
+		return (note >= 0 && note < noteHzTable.length) ? noteHzTable[note] : 0;
+	}
+
+	private double getNoteStep(int note) {
+		return noteHz(note) / (double)sampleRate;
+	}
+
+	private void stepVoice(int voice, int note) {
 		voices[voice] += getNoteStep(note);
 		voices[voice] -= Math.floor(voices[voice]);
+		// i forgot what this part does now.
+		// i think it advances the time of each
+		// voice over [0,1) instead of [0,2π)
 	}
 
-	private void stepVoices(double[] notes) {
+	private void stepVoices(int[] notes) {
 		for(int i = 0; i < notes.length; i++)
 			stepVoice(i, notes[i]);
 	}
@@ -96,21 +128,21 @@ class AudioPlayer {
 			sampleBuffer[i] = 0;
 	}
 
-	public void polySampleBuffer(double notes[], double[] volumes) {
+	public void polySampleBuffer(int notes[], double[] volumes) {
 		for(int i = 0; i < sampleBuffer.length; i++) {
 			sampleBuffer[i] = getPolySample(volumes);
 			stepVoices(notes);
 		}
 	}
 
-	public void setSampleBuffer(int voice, double note, double volume) {
+	public void setSampleBuffer(int voice, int note, double volume) {
 		for(int i = 0; i < sampleBuffer.length; i++) {
 			sampleBuffer[i] = getSample(voice, volume);
 			stepVoice(voice, note);
 		}
 	}
 
-	public void addSampleBuffer(int voice, double note, double volume) {
+	public void addSampleBuffer(int voice, int note, double volume) {
 		for(int i = 0; i < sampleBuffer.length; i++) {
 			sampleBuffer[i] += getSample(voice, volume);
 			stepVoice(voice, note);
@@ -347,17 +379,17 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 			long startTime;
 			long frameN;
 
-			final double noteMax = 30.0;
-
-			private double rangeToNote(Range range, double muMax) {
-				return Math.rint(noteMax * range.mu() / muMax);
+			private int rangeToNote(Range range, double muMax) {
+				final int MAX_NOTE = 23;
+				return (int)Math.rint(MAX_NOTE * range.mu() / muMax);
 			}
 
 			private double rangeToVolume(Range range) {
-				return Math.min(1.0, 0.90 + range.sigma() / 100.0);
+				return 0.95;
+				// return Math.min(1.0, 0.60 + range.sigma() / 100.0);
 			}
 
-			double[] notes;
+			int[] notes;
 			double[] volumes;
 
 			int scanlineOffset;
@@ -395,7 +427,7 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 
 					lock.writeLock().lock();
 					try {
-						notes = new double[0];
+						notes = new int[0];
 						volumes = new double[0];
 						frameN = 0;
 					} finally {
@@ -451,7 +483,7 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 									try {
 
 										rangeN = scanline.ranges.length;
-										notes = new double[rangeN];
+										notes = new int[rangeN];
 										volumes = new double[rangeN];
 
 										for(int i = 0; i < rangeN; i++) {
@@ -517,7 +549,7 @@ public class PaperTracker extends Activity implements SurfaceHolder.Callback, Ca
 							@Override
 							public void run() {
 
-								double[] _notes;
+								int[] _notes;
 								double[] _volumes;
 
 								while(previewing) {
