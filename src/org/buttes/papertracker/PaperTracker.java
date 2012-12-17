@@ -48,15 +48,15 @@ class AudioPlayer {
 	final int sampleBufferN = Math.min(sampleRate / 225, bufferSize / sampleSize);
 	final short[] sampleBuffer = new short[sampleBufferN];
 
-	final int voicesN = 4;
+	final int voicesN = 7;
 	final double[] voices = new double[voicesN];
 
 	public AudioPlayer() {
 
-		final double scale[] = dmajor;
+		final double scale[] = abminor;
 		final int noteHzTableSz = 96;
 
-		initializeNoteHzTable(dmajor, noteHzTableSz);
+		initializeNoteHzTable(scale, noteHzTableSz);
 
       audio = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, sampleChannelCfg, sampleEncoding, bufferSize, AudioTrack.MODE_STREAM);
 		audio.play();
@@ -65,11 +65,13 @@ class AudioPlayer {
 	//            0  1  2  3  4  5  6  7  8  9  10 11
 	// chromatic: C. C# D. D# E. F. F# G. G# A. A# B.
    //            0  -- 2  -- 4  5  -- 7  -- 9  10 --
-	// d-minor:   C. -- D. -- E. F. -- G. -- A. Bb --
-	// d-major:   -- C# D. -- E. -- F# G. -- A. -- B.
+	// D-minor:   C. -- D. -- E. F. -- G. -- A. Bb --
+	// D-major:   -- C# D. -- E. -- F# G. -- A. -- B.
+	// Ab-minor:  -- Db -- Eb Fb -- Gb -- Ab -- Bb Cb
 
-	private double dminor[] = { 0, 2, 4, 5, 7, 9, 10 };
-	private double dmajor[] = { 1, 2, 4, 6, 7, 9, 11 };
+	private double dminor[]  = { 0, 2, 4, 5, 7,  9, 10 };
+	private double dmajor[]  = { 1, 2, 4, 6, 7,  9, 11 };
+	private double abminor[] = { 1, 3, 4, 6, 8, 10, 11 };
 
 	private double noteHzTable[];
 
