@@ -9,3 +9,9 @@ email: aempirei@gmail.com aempirei@256.bz
 http://www.256.bz/ http://www.twentygoto10.com/
 git://github.com/aempirei/PaperTracker.git
 aim: ambientempire
+
+As the application is not currently in the Google Play
+App Store, you can alternatively just download a release
+APK via http://papertracker.256.bz/download, otherwise
+building this project requires a bunch of java stuff
+and the Android SDK.
